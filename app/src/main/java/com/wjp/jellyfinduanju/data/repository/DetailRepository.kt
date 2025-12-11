@@ -433,7 +433,9 @@ class DetailRepository(
     }
     
     /**
-     * 上报播放进度到服务器
+     * 上报播放进度到服务器（会话 API）
+     * 
+     * 注意：此 API 只在活跃播放会话期间有效，需要先调用 reportPlaybackStart
      * 
      * @param episodeId 剧集 ID
      * @param positionTicks 播放位置（ticks）
@@ -468,6 +470,49 @@ class DetailRepository(
             response.isSuccessful
         } catch (e: Exception) {
             android.util.Log.e("DetailRepository", "上报播放进度失败", e)
+            false
+        }
+    }
+    
+    /**
+     * 直接更新播放进度到服务器（更可靠的方式）
+     * 
+     * 使用 UserData API 直接更新用户数据，不依赖播放会话
+     * 
+     * @param episodeId 剧集 ID
+     * @param positionTicks 播放位置（ticks）
+     * @return 是否成功
+     */
+    suspend fun updatePlaybackPosition(
+        episodeId: String,
+        positionTicks: Long
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val serverConfig = authRepository.serverConfig.first() ?: return@withContext false
+            val userSession = authRepository.userSession.first() ?: return@withContext false
+            val deviceId = authRepository.getDeviceId()
+            val deviceName = getDeviceName()
+            
+            val api = NetworkModule.createJellyfinApi(serverConfig.serverUrl)
+            val authHeader = JellyfinAuthHeader.buildAuthHeader(
+                deviceId = deviceId,
+                deviceName = deviceName,
+                token = userSession.accessToken
+            )
+            
+            val request = com.wjp.jellyfinduanju.data.network.UpdateUserDataRequest(
+                playbackPositionTicks = positionTicks,
+                played = null  // 不改变播放完成状态
+            )
+            
+            val response = api.updateUserItemData(
+                authorization = authHeader,
+                userId = userSession.userId,
+                itemId = episodeId,
+                request = request
+            )
+            response.isSuccessful
+        } catch (e: Exception) {
             false
         }
     }

@@ -1,6 +1,7 @@
 package com.wjp.jellyfinduanju.ui.screens.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,13 +16,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.SwipeVertical
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -284,6 +288,36 @@ private fun SettingsContent(
                     subtitle = "播放完成后自动播放下一集",
                     checked = AppSettings.autoPlayNext,
                     onCheckedChange = { AppSettings.autoPlayNext = it }
+                )
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
+                
+                // 滑动切换阈值
+                ThresholdSettingItem(
+                    icon = Icons.Default.SwipeVertical,
+                    title = "滑动切换阈值",
+                    subtitle = "滑动超过多少百分比切换页面",
+                    currentValue = AppSettings.swipeThreshold,
+                    options = listOf(0.1f, 0.2f, 0.3f, 0.4f, 0.5f),
+                    formatValue = { "${(it * 100).toInt()}%" },
+                    onValueSelected = { AppSettings.swipeThreshold = it }
+                )
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
+                
+                // 进度上报间隔
+                NumberInputSettingItem(
+                    icon = Icons.Default.CloudUpload,
+                    title = "进度上报间隔",
+                    subtitle = "0为不上报，最小10秒",
+                    currentValue = AppSettings.reportInterval,
+                    onValueChange = { AppSettings.reportInterval = it }
                 )
             }
         }
@@ -606,6 +640,184 @@ private fun SwitchSettingItem(
             onCheckedChange = { 
                 isChecked = it
                 onCheckedChange(it)
+            }
+        )
+    }
+}
+
+/**
+ * 阈值设置项组件
+ * 
+ * 用于选择百分比阈值
+ */
+@Composable
+private fun ThresholdSettingItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    currentValue: Float,
+    options: List<Float>,
+    formatValue: (Float) -> String,
+    onValueSelected: (Float) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var selectedValue by remember { mutableStateOf(currentValue) }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = true }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        
+        Box {
+            Text(
+                text = formatValue(selectedValue),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                options.forEach { value ->
+                    DropdownMenuItem(
+                        text = { Text(formatValue(value)) },
+                        onClick = {
+                            selectedValue = value
+                            onValueSelected(value)
+                            expanded = false
+                        },
+                        leadingIcon = if (value == selectedValue) {
+                            { Icon(Icons.Default.Check, contentDescription = null) }
+                        } else null
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 数字输入设置项组件
+ * 
+ * 用于输入上报间隔等数字设置
+ */
+@Composable
+private fun NumberInputSettingItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    currentValue: Int,
+    onValueChange: (Int) -> Unit
+) {
+    var showDialog by remember { mutableStateOf(false) }
+    var inputValue by remember { mutableStateOf(currentValue.toString()) }
+    // 本地状态用于显示，确保 UI 刷新
+    var displayValue by remember { mutableStateOf(currentValue) }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { 
+                inputValue = displayValue.toString()
+                showDialog = true 
+            }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        
+        Text(
+            text = if (displayValue == 0) "不上报" else "${displayValue}秒",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+    
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text(title) },
+            text = {
+                Column {
+                    Text(
+                        text = "请输入秒数（0为不上报，最小10秒）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = inputValue,
+                        onValueChange = { newValue ->
+                            // 只允许输入数字
+                            if (newValue.isEmpty() || newValue.all { it.isDigit() }) {
+                                inputValue = newValue
+                            }
+                        },
+                        label = { Text("秒数") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val value = inputValue.toIntOrNull() ?: 0
+                        displayValue = value  // 更新本地显示值
+                        onValueChange(value)
+                        showDialog = false
+                    }
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("取消")
+                }
             }
         )
     }

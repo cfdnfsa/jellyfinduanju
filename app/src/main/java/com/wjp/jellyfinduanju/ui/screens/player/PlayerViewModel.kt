@@ -236,8 +236,11 @@ class PlayerViewModel(
      * @param currentPosition 当前播放位置（毫秒）
      * @param duration 视频总时长（毫秒）
      * 
-     * 由 VideoPlayer 定期回调，同时检测是否播放完成（>= 95%）
+     * 由 VideoPlayer 定期回调，同时检测是否播放完成
      * 同时更新 allEpisodes 和 episodesBySeasonId 中当前剧集的进度（用于选集弹窗显示）
+     * 
+     * 跳过片尾逻辑：当到达 (总时长 - 跳过片尾秒数) 时自动切换下一集
+     * 完成判断：考虑跳过片尾设置，调整完成百分比
      */
     fun updateProgress(currentPosition: Long, duration: Long) {
         val currentEpisode = uiState.value.currentEpisode ?: return
@@ -276,7 +279,7 @@ class PlayerViewModel(
             )
         }
         
-        // 检测播放完成（进度 >= 95% 视为看完）
+        // 检测播放完成（95% 进度视为完成）
         if (duration > 0 && currentPosition > 0) {
             val progress = currentPosition.toFloat() / duration
             if (progress >= 0.95f && !uiState.value.hasReportedComplete) {
@@ -390,12 +393,11 @@ class PlayerViewModel(
                 positionTicks = positionTicks
             )
             
-            // 上报到服务器（静默处理）
+            // 上报到服务器（使用更可靠的 UserData API）
             try {
-                detailRepository.reportPlaybackProgress(
+                detailRepository.updatePlaybackPosition(
                     episodeId = episode.id,
-                    positionTicks = positionTicks,
-                    isPaused = !state.isPlaying
+                    positionTicks = positionTicks
                 )
             } catch (_: Exception) { }
         } catch (_: Exception) { }
@@ -421,10 +423,10 @@ class PlayerViewModel(
                     positionTicks = positionTicks
                 )
                 
-                detailRepository.reportPlaybackProgress(
+                // 使用更可靠的 UserData API 上报进度
+                detailRepository.updatePlaybackPosition(
                     episodeId = episode.id,
-                    positionTicks = positionTicks,
-                    isPaused = false
+                    positionTicks = positionTicks
                 )
             } catch (_: Exception) { }
         }

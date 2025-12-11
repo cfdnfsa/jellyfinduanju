@@ -121,6 +121,30 @@ object AppSettings {
             mmkv.encode(Keys.AUTO_PLAY_NEXT, value)
         }
     
+    /**
+     * 滑动切换阈值
+     * 滑动超过页面多少百分比切换到下一页
+     * 默认 0.2f（20%），可选 0.1/0.2/0.3/0.4/0.5
+     */
+    var swipeThreshold: Float
+        get() = mmkv.decodeFloat(Keys.SWIPE_THRESHOLD, 0.2f)
+        set(value) {
+            mmkv.encode(Keys.SWIPE_THRESHOLD, value.coerceIn(0.1f, 0.5f))
+        }
+    
+    /**
+     * 进度上报间隔（秒）
+     * 0 表示不上报，最小 10 秒
+     * 默认 0（不上报）
+     */
+    var reportInterval: Int
+        get() = mmkv.decodeInt(Keys.REPORT_INTERVAL, 0)
+        set(value) {
+            // 0 表示不上报，否则最小 10 秒
+            val validValue = if (value == 0) 0 else value.coerceAtLeast(10)
+            mmkv.encode(Keys.REPORT_INTERVAL, validValue)
+        }
+    
     // ==================== MMKV 键名 ====================
     private object Keys {
         const val IMAGE_CACHE_PATH = "image_cache_path"
@@ -129,6 +153,8 @@ object AppSettings {
         const val LONG_PRESS_SPEED = "long_press_speed"
         const val DEFAULT_PLAYBACK_SPEED = "default_playback_speed"
         const val AUTO_PLAY_NEXT = "auto_play_next"
+        const val SWIPE_THRESHOLD = "swipe_threshold"
+        const val REPORT_INTERVAL = "report_interval"
     }
     
     /**

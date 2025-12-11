@@ -339,10 +339,10 @@ fun PlayerScreen(
                 // 不预加载其他页面，只渲染当前页
                 // 这样可以避免同时创建多个 VideoPlayer
                 beyondViewportPageCount = 0,
-                // 确保滑动后页面完全对齐（snap）
+                // 确保滑动后页面完全对齐（snap），使用设置中的阈值
                 flingBehavior = PagerDefaults.flingBehavior(
                     state = pagerState,
-                    snapPositionalThreshold = 0.2f  // 滑动超过 20% 就切换页面
+                    snapPositionalThreshold = com.wjp.jellyfinduanju.data.settings.AppSettings.swipeThreshold
                 )
             ) { page ->
                 // 判断是否为当前显示的页面
