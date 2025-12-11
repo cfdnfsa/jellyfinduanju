@@ -234,7 +234,11 @@ data class SeriesLocalData(
                 seasonCount = item.childCount,
                 episodeCount = item.recursiveItemCount,
                 lastSyncTime = System.currentTimeMillis(),
-                cloudFolderTag = parentName
+                cloudFolderTag = parentName,
+                // 观看状态（从服务器 UserData 获取）
+                played = item.userData?.played ?: false,
+                lastWatchPositionTicks = item.userData?.playbackPositionTicks ?: 0,
+                lastWatchTime = 0 // lastPlayedDate 需要解析，暂时设为 0
             )
         }
     }
