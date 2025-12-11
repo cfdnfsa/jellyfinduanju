@@ -75,8 +75,8 @@ class SeriesRepository(
             val deviceId = authRepository.getDeviceId()
             val deviceName = getDeviceName()
             
-            // 创建 API 客户端
-            val api = NetworkModule.createJellyfinApi(serverConfig.serverUrl)
+            // 创建 API 客户端（使用当前激活的服务器地址）
+            val api = authRepository.createActiveApi(serverConfig.serverUrl)
             
             // 构建认证头
             val authHeader = JellyfinAuthHeader.buildAuthHeader(

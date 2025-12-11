@@ -1,6 +1,7 @@
 package com.wjp.jellyfinduanju.ui.screens.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,9 +18,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
@@ -35,7 +41,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,12 +56,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.wjp.jellyfinduanju.data.model.ServerConfig
-import com.wjp.jellyfinduanju.data.model.UserSession
 import com.wjp.jellyfinduanju.data.settings.AppSettings
-import com.wjp.jellyfinduanju.ui.theme.JellyfinDuanjuTheme
 
 /**
  * SettingsScreen - 设置页面
@@ -86,7 +90,15 @@ fun SettingsScreen(
             viewModel.hideLogoutDialog()
             viewModel.logout()
         },
-        onLogoutCancel = { viewModel.hideLogoutDialog() }
+        onLogoutCancel = { viewModel.hideLogoutDialog() },
+        // 备用服务器相关
+        onAddSecondaryServerClick = { viewModel.showSecondaryServerDialog() },
+        onEditSecondaryServerClick = { viewModel.showSecondaryServerDialog() },
+        onDeleteSecondaryServerClick = { viewModel.deleteSecondaryServerUrl() },
+        onToggleServerClick = { viewModel.toggleActiveServer() },
+        onSecondaryUrlChange = { viewModel.updateEditingSecondaryUrl(it) },
+        onSaveSecondaryServer = { viewModel.saveSecondaryServerUrl() },
+        onCancelSecondaryServer = { viewModel.hideSecondaryServerDialog() }
     )
 }
 
@@ -102,7 +114,15 @@ private fun SettingsContent(
     onTagManageClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onLogoutConfirm: () -> Unit,
-    onLogoutCancel: () -> Unit
+    onLogoutCancel: () -> Unit,
+    // 备用服务器相关
+    onAddSecondaryServerClick: () -> Unit,
+    onEditSecondaryServerClick: () -> Unit,
+    onDeleteSecondaryServerClick: () -> Unit,
+    onToggleServerClick: () -> Unit,
+    onSecondaryUrlChange: (String) -> Unit,
+    onSaveSecondaryServer: () -> Unit,
+    onCancelSecondaryServer: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -169,17 +189,135 @@ private fun SettingsContent(
                         modifier = Modifier.size(40.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = uiState.serverConfig?.serverName ?: "未连接",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            text = uiState.serverConfig?.serverUrl ?: "-",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        // 主服务器地址
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (uiState.activeServerIndex == 0) {
+                                Text(
+                                    text = "当前",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+                            }
+                            Text(
+                                text = "主: ${uiState.serverConfig?.serverUrl ?: "-"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (uiState.activeServerIndex == 0) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                // 备用服务器地址
+                if (uiState.secondaryServerUrl != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(40.dp)
                         )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (uiState.activeServerIndex == 1) {
+                                    Text(
+                                        text = "当前",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(end = 4.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "备用: ${uiState.secondaryServerUrl}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (uiState.activeServerIndex == 1) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+                        // 编辑按钮
+                        IconButton(
+                            onClick = onEditSecondaryServerClick,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "编辑",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        // 删除按钮
+                        IconButton(
+                            onClick = onDeleteSecondaryServerClick,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "删除",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+                
+                // 操作按钮行
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 切换按钮（只有有备用地址时显示）
+                    if (uiState.secondaryServerUrl != null) {
+                        TextButton(
+                            onClick = onToggleServerClick,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SwapHoriz,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (uiState.activeServerIndex == 0) "切换到备用" else "切换到主"
+                            )
+                        }
+                    }
+                    
+                    // 添加备用地址按钮（没有备用地址时显示）
+                    if (uiState.secondaryServerUrl == null) {
+                        TextButton(
+                            onClick = onAddSecondaryServerClick,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("添加备用地址")
+                        }
                     }
                 }
             }
@@ -477,60 +615,48 @@ private fun SettingsContent(
             }
         )
     }
-}
-
-// ==================== 预览 ====================
-
-@Preview(
-    name = "设置页面",
-    showBackground = true,
-    showSystemUi = true
-)
-@Composable
-private fun PreviewSettingsScreen() {
-    JellyfinDuanjuTheme(darkTheme = true) {
-        SettingsContent(
-            uiState = SettingsUiState(
-                userSession = UserSession(
-                    userId = "abc123",
-                    username = "admin",
-                    accessToken = "token",
-                    serverId = "server1"
-                ),
-                serverConfig = ServerConfig(
-                    serverUrl = "http://192.168.1.100:8096",
-                    serverName = "我的 Jellyfin 服务器",
-                    serverId = "server1"
-                )
-            ),
-            onCacheSettingsClick = {},
-            onTagManageClick = {},
-            onLogoutClick = {},
-            onLogoutConfirm = {},
-            onLogoutCancel = {}
+    
+    // ==================== 备用服务器地址对话框 ====================
+    
+    if (uiState.showSecondaryServerDialog) {
+        AlertDialog(
+            onDismissRequest = onCancelSecondaryServer,
+            title = { 
+                Text(
+                    if (uiState.secondaryServerUrl != null) "编辑备用地址" else "添加备用地址"
+                ) 
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "输入备用服务器地址（用于内网/外网切换）",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = uiState.editingSecondaryUrl,
+                        onValueChange = onSecondaryUrlChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onSaveSecondaryServer) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onCancelSecondaryServer) {
+                    Text("取消")
+                }
+            }
         )
     }
 }
 
-@Preview(
-    name = "退出确认对话框",
-    showBackground = true
-)
-@Composable
-private fun PreviewLogoutDialog() {
-    JellyfinDuanjuTheme {
-        SettingsContent(
-            uiState = SettingsUiState(
-                showLogoutDialog = true
-            ),
-            onCacheSettingsClick = {},
-            onTagManageClick = {},
-            onLogoutClick = {},
-            onLogoutConfirm = {},
-            onLogoutCancel = {}
-        )
-    }
-}
 
 // ==================== 倍速设置项组件 ====================
 

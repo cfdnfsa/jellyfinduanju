@@ -43,6 +43,11 @@ class AppDataStore(context: Context) {
         const val KEY_SERVER_NAME = "server_name"
         const val KEY_SERVER_ID = "server_id"
         
+        // 备用服务器地址
+        const val KEY_SECONDARY_SERVER_URL = "secondary_server_url"
+        // 当前激活的服务器索引（0=主地址，1=备用地址）
+        const val KEY_ACTIVE_SERVER_INDEX = "active_server_index"
+        
         // 用户会话
         const val KEY_USER_ID = "user_id"
         const val KEY_USERNAME = "username"
@@ -61,6 +66,8 @@ class AppDataStore(context: Context) {
     private val _serverConfigFlow = MutableStateFlow(loadServerConfig())
     private val _userSessionFlow = MutableStateFlow(loadUserSession())
     private val _deviceIdFlow = MutableStateFlow(loadDeviceId())
+    private val _secondaryServerUrlFlow = MutableStateFlow(loadSecondaryServerUrl())
+    private val _activeServerIndexFlow = MutableStateFlow(loadActiveServerIndex())
     
     // ==================== 服务器配置 ====================
     
@@ -93,6 +100,97 @@ class AppDataStore(context: Context) {
         } else {
             null
         }
+    }
+    
+    // ==================== 备用服务器地址 ====================
+    
+    /**
+     * 获取备用服务器地址 Flow
+     */
+    val secondaryServerUrl: Flow<String?> = _secondaryServerUrlFlow
+    
+    /**
+     * 获取当前激活的服务器索引 Flow
+     * 0 = 主地址，1 = 备用地址
+     */
+    val activeServerIndex: Flow<Int> = _activeServerIndexFlow
+    
+    /**
+     * 保存备用服务器地址
+     */
+    fun saveSecondaryServerUrl(url: String?) {
+        if (url.isNullOrBlank()) {
+            mmkv.removeValueForKey(KEY_SECONDARY_SERVER_URL)
+            _secondaryServerUrlFlow.value = null
+            // 如果删除备用地址，自动切换回主地址
+            if (_activeServerIndexFlow.value == 1) {
+                setActiveServerIndex(0)
+            }
+        } else {
+            mmkv.encode(KEY_SECONDARY_SERVER_URL, url)
+            _secondaryServerUrlFlow.value = url
+        }
+    }
+    
+    /**
+     * 从 MMKV 加载备用服务器地址
+     */
+    private fun loadSecondaryServerUrl(): String? {
+        return mmkv.decodeString(KEY_SECONDARY_SERVER_URL)
+    }
+    
+    /**
+     * 设置当前激活的服务器索引
+     * @param index 0 = 主地址，1 = 备用地址
+     */
+    fun setActiveServerIndex(index: Int) {
+        val validIndex = if (index == 1 && _secondaryServerUrlFlow.value != null) 1 else 0
+        mmkv.encode(KEY_ACTIVE_SERVER_INDEX, validIndex)
+        _activeServerIndexFlow.value = validIndex
+    }
+    
+    /**
+     * 从 MMKV 加载激活的服务器索引
+     */
+    private fun loadActiveServerIndex(): Int {
+        return mmkv.decodeInt(KEY_ACTIVE_SERVER_INDEX, 0)
+    }
+    
+    /**
+     * 切换服务器地址
+     * 在主地址和备用地址之间切换
+     */
+    fun toggleActiveServer() {
+        val currentIndex = _activeServerIndexFlow.value
+        val newIndex = if (currentIndex == 0 && _secondaryServerUrlFlow.value != null) 1 else 0
+        setActiveServerIndex(newIndex)
+    }
+    
+    /**
+     * 获取当前激活的服务器地址
+     * @return 当前使用的服务器 URL，如果没有配置则返回 null
+     */
+    fun getActiveServerUrl(): String? {
+        val config = _serverConfigFlow.value ?: return null
+        return if (_activeServerIndexFlow.value == 1 && _secondaryServerUrlFlow.value != null) {
+            _secondaryServerUrlFlow.value
+        } else {
+            config.serverUrl
+        }
+    }
+    
+    /**
+     * 获取当前激活的服务器索引（同步方法）
+     */
+    fun getActiveServerIndexSync(): Int {
+        return _activeServerIndexFlow.value
+    }
+    
+    /**
+     * 获取备用服务器地址（同步方法）
+     */
+    fun getSecondaryServerUrlSync(): String? {
+        return _secondaryServerUrlFlow.value
     }
     
     // ==================== 用户会话 ====================
@@ -180,5 +278,7 @@ class AppDataStore(context: Context) {
         _serverConfigFlow.value = null
         _userSessionFlow.value = null
         _deviceIdFlow.value = ""
+        _secondaryServerUrlFlow.value = null
+        _activeServerIndexFlow.value = 0
     }
 }

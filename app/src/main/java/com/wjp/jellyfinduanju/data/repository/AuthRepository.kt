@@ -5,6 +5,7 @@ import com.wjp.jellyfinduanju.data.local.AppDataStore
 import com.wjp.jellyfinduanju.data.model.AuthenticateByNameRequest
 import com.wjp.jellyfinduanju.data.model.ServerConfig
 import com.wjp.jellyfinduanju.data.model.UserSession
+import com.wjp.jellyfinduanju.data.network.JellyfinApi
 import com.wjp.jellyfinduanju.data.network.JellyfinAuthHeader
 import com.wjp.jellyfinduanju.data.network.NetworkModule
 import kotlinx.coroutines.flow.Flow
@@ -41,6 +42,31 @@ class AuthRepository(
      * 获取服务器配置
      */
     val serverConfig: Flow<ServerConfig?> = dataStore.serverConfig
+    
+    /**
+     * 获取备用服务器地址 Flow
+     */
+    val secondaryServerUrl: Flow<String?> = dataStore.secondaryServerUrl
+    
+    /**
+     * 获取当前激活的服务器索引 Flow
+     */
+    val activeServerIndex: Flow<Int> = dataStore.activeServerIndex
+    
+    /**
+     * 获取当前激活的服务器地址
+     */
+    fun getActiveServerUrl(): String? = dataStore.getActiveServerUrl()
+    
+    /**
+     * 创建使用当前激活服务器地址的 API 客户端
+     * 
+     * @param fallbackUrl 如果没有激活地址时使用的备用地址
+     */
+    fun createActiveApi(fallbackUrl: String): JellyfinApi {
+        val activeUrl = getActiveServerUrl() ?: fallbackUrl
+        return NetworkModule.createJellyfinApi(activeUrl)
+    }
     
     // ==================== 服务器验证 ====================
     
@@ -176,7 +202,9 @@ class AuthRepository(
                 val deviceId = dataStore.deviceId.first()
                 val deviceName = getDeviceName()
                 
-                val api = NetworkModule.createJellyfinApi(config.serverUrl)
+                // 使用当前激活的服务器地址
+                val activeUrl = getActiveServerUrl() ?: config.serverUrl
+                val api = NetworkModule.createJellyfinApi(activeUrl)
                 val authHeader = JellyfinAuthHeader.buildAuthHeader(
                     deviceId = deviceId,
                     deviceName = deviceName,
@@ -201,6 +229,32 @@ class AuthRepository(
             Result.success(Unit)
         }
     }
+    
+    // ==================== 备用服务器管理 ====================
+    
+    /**
+     * 保存备用服务器地址
+     */
+    fun saveSecondaryServerUrl(url: String?) {
+        dataStore.saveSecondaryServerUrl(url)
+    }
+    
+    /**
+     * 切换服务器地址
+     */
+    fun toggleActiveServer() {
+        dataStore.toggleActiveServer()
+    }
+    
+    /**
+     * 获取备用服务器地址（同步）
+     */
+    fun getSecondaryServerUrlSync(): String? = dataStore.getSecondaryServerUrlSync()
+    
+    /**
+     * 获取当前激活的服务器索引（同步）
+     */
+    fun getActiveServerIndexSync(): Int = dataStore.getActiveServerIndexSync()
     
     // ==================== 辅助方法 ====================
     
