@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -48,12 +50,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,6 +94,20 @@ fun DetailScreen(
     onEpisodeClick: (EpisodeLocalData) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    
+    // 监听生命周期，从播放页返回时刷新本地数据
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshFromLocalCache()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     
     // 监听返回信号（删除已从服务器删除的剧集后触发）
     LaunchedEffect(uiState.shouldNavigateBack) {
@@ -99,7 +119,8 @@ fun DetailScreen(
     DetailScreenContent(
         uiState = uiState,
         onBack = onBack,
-        onRefresh = { viewModel.refreshData() },
+        onSync = { viewModel.syncFromServer() },
+        onUpload = { viewModel.uploadProgressToServer() },
         onEpisodeClick = onEpisodeClick,
         onEpisodeLongClick = { episode -> viewModel.showMarkPlayedDialog(episode) },
         onToggleEpisodeSelection = { episodeId -> viewModel.toggleEpisodeSelection(episodeId) },
@@ -126,7 +147,8 @@ fun DetailScreen(
 private fun DetailScreenContent(
     uiState: DetailUiState,
     onBack: () -> Unit,
-    onRefresh: () -> Unit,
+    onSync: () -> Unit,
+    onUpload: () -> Unit,
     onEpisodeClick: (EpisodeLocalData) -> Unit,
     onEpisodeLongClick: (EpisodeLocalData) -> Unit,
     onToggleEpisodeSelection: (String) -> Unit,
@@ -151,15 +173,24 @@ private fun DetailScreenContent(
         }
     }
     
+    // 显示上报结果
+    LaunchedEffect(uiState.uploadResult) {
+        uiState.uploadResult?.let { result ->
+            snackbarHostState.showSnackbar(result)
+        }
+    }
+    
     Scaffold(
         topBar = {
             DetailTopBar(
                 isInSelectMode = uiState.isInSelectMode,
                 isCacheMode = uiState.isCacheSelectMode,
                 isRefreshing = uiState.isRefreshing,
+                isUploading = uiState.isUploading,
                 selectedCount = uiState.selectedEpisodeIds.size,
                 onBack = onBack,
-                onRefresh = onRefresh,
+                onSync = onSync,
+                onUpload = onUpload,
                 onExitSelectMode = onExitSelectMode,
                 onToggleSelectAll = onToggleSelectAll,
                 onConfirmAction = if (uiState.isCacheSelectMode) onCacheSelected else onDeleteSelected
@@ -252,8 +283,11 @@ private fun DetailScreenContent(
 /**
  * DetailTopBar - 详情页顶部栏
  * 
- * 正常模式：[←返回]                    [🔄刷新]
+ * 正常模式：[←返回]                    [↑上报] [↓同步]
  * 选择模式：[✕取消]  已选择 X 集  [全选] [✓确认]
+ * 
+ * 同步：从服务器拉取最新数据（播放进度、是否看完）
+ * 上报：将本地进度上报到服务器
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -261,9 +295,11 @@ private fun DetailTopBar(
     isInSelectMode: Boolean,
     isCacheMode: Boolean,
     isRefreshing: Boolean,
+    isUploading: Boolean,
     selectedCount: Int,
     onBack: () -> Unit,
-    onRefresh: () -> Unit,
+    onSync: () -> Unit,
+    onUpload: () -> Unit,
     onExitSelectMode: () -> Unit,
     onToggleSelectAll: () -> Unit,
     onConfirmAction: () -> Unit
@@ -310,10 +346,28 @@ private fun DetailTopBar(
                     )
                 }
             } else {
-                // 正常模式：刷新按钮
+                // 正常模式：上报按钮
                 IconButton(
-                    onClick = onRefresh,
-                    enabled = !isRefreshing
+                    onClick = onUpload,
+                    enabled = !isUploading && !isRefreshing
+                ) {
+                    if (isUploading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.CloudUpload,
+                            contentDescription = "上报进度到服务器"
+                        )
+                    }
+                }
+                
+                // 同步按钮
+                IconButton(
+                    onClick = onSync,
+                    enabled = !isRefreshing && !isUploading
                 ) {
                     if (isRefreshing) {
                         CircularProgressIndicator(
@@ -322,8 +376,8 @@ private fun DetailTopBar(
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "刷新"
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = "从服务器同步数据"
                         )
                     }
                 }
@@ -833,7 +887,8 @@ private fun PreviewDetailScreen() {
                 episodesBySeasonId = mapOf("s1" to episodes)
             ),
             onBack = {},
-            onRefresh = {},
+            onSync = {},
+            onUpload = {},
             onEpisodeClick = {},
             onEpisodeLongClick = {},
             onToggleEpisodeSelection = {},
@@ -891,7 +946,8 @@ private fun PreviewSelectMode() {
                 selectedEpisodeIds = setOf("e5", "e6", "e7")
             ),
             onBack = {},
-            onRefresh = {},
+            onSync = {},
+            onUpload = {},
             onEpisodeClick = {},
             onEpisodeLongClick = {},
             onToggleEpisodeSelection = {},

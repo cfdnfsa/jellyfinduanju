@@ -61,6 +61,16 @@ class DetailViewModel(
     }
     
     /**
+     * 从本地缓存刷新数据
+     * 
+     * 用于从播放页返回时，重新加载本地最新的进度数据
+     * 不会请求网络，只从 MMKV 读取
+     */
+    fun refreshFromLocalCache() {
+        loadSeasons()
+    }
+    
+    /**
      * 监听下载状态变化
      * 
      * 追踪本剧集中每个剧集的下载状态：
@@ -206,16 +216,18 @@ class DetailViewModel(
     // ==================== 刷新数据（强制网络） ====================
     
     /**
-     * 刷新数据
+     * 同步数据（从服务器拉取）
      * 
-     * 强制从服务器获取最新数据，同步播放进度等信息
-     * 用户点击刷新按钮时调用
+     * 从服务器获取最新数据（播放进度、是否看完等），保留本地缓存状态
+     * 用户点击同步按钮时调用
      */
-    fun refreshData() {
+    fun syncFromServer() {
         if (_uiState.value.isRefreshing) return
         
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true, error = null) }
+            
+            android.util.Log.d("DetailViewModel", "syncFromServer: 开始同步 seriesId=${series.id}")
             
             // 强制刷新季列表
             val seasonsResult = detailRepository.refreshSeasons(series.id)
@@ -226,32 +238,67 @@ class DetailViewModel(
                         it.copy(seasons = seasons)
                     }
                     
-                    // 刷新每个季的剧集
+                    // 刷新每个季的剧集（会保留本地缓存状态）
                     seasons.forEach { season ->
                         val episodesResult = detailRepository.refreshEpisodes(series.id, season.id)
                         episodesResult.fold(
                             onSuccess = { episodes ->
+                                android.util.Log.d("DetailViewModel", "syncFromServer: 季${season.seasonNumber} 获取到 ${episodes.size} 集")
+                                episodes.take(3).forEach { ep ->
+                                    android.util.Log.d("DetailViewModel", "  第${ep.episodeNumber}集: played=${ep.played}, positionTicks=${ep.playbackPositionTicks}, runTimeTicks=${ep.runTimeTicks}, percent=${ep.getProgressPercent()}%")
+                                }
                                 _uiState.update { state ->
                                     val updatedEpisodes = state.episodesBySeasonId.toMutableMap()
                                     updatedEpisodes[season.id] = episodes
                                     state.copy(episodesBySeasonId = updatedEpisodes)
                                 }
                             },
-                            onFailure = { /* 忽略单季失败 */ }
+                            onFailure = { e ->
+                                android.util.Log.e("DetailViewModel", "syncFromServer: 季${season.seasonNumber} 失败: ${e.message}")
+                            }
                         )
                     }
                     
                     _uiState.update { it.copy(isRefreshing = false) }
                 },
                 onFailure = { exception ->
+                    android.util.Log.e("DetailViewModel", "syncFromServer: 失败 ${exception.message}")
                     _uiState.update { 
                         it.copy(
                             isRefreshing = false,
-                            error = exception.message ?: "刷新失败"
+                            error = exception.message ?: "同步失败"
                         )
                     }
                 }
             )
+        }
+    }
+    
+    /**
+     * 上报进度到服务器
+     * 
+     * 将本地保存的播放进度上报到服务器
+     * 用户点击上报按钮时调用
+     */
+    fun uploadProgressToServer() {
+        if (_uiState.value.isUploading) return
+        
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploading = true) }
+            
+            val seasons = _uiState.value.seasons
+            val count = detailRepository.uploadLocalProgressToServer(series.id, seasons)
+            
+            _uiState.update { 
+                it.copy(
+                    isUploading = false,
+                    uploadResult = if (count > 0) "已上报 $count 条进度" else "无进度需要上报"
+                )
+            }
+            
+            // 3秒后清除提示
+            kotlinx.coroutines.delay(3000)
+            _uiState.update { it.copy(uploadResult = null) }
         }
     }
     
@@ -569,7 +616,10 @@ data class DetailUiState(
     val shouldNavigateBack: Boolean = false,
     // 下载状态追踪
     val downloadingEpisodeIds: Set<String> = emptySet(),  // 正在下载中
-    val pendingEpisodeIds: Set<String> = emptySet()       // 排队等待中
+    val pendingEpisodeIds: Set<String> = emptySet(),      // 排队等待中
+    // 上报进度状态
+    val isUploading: Boolean = false,
+    val uploadResult: String? = null
 ) {
     /**
      * 是否处于任意选择模式

@@ -181,7 +181,7 @@ interface JellyfinApi {
         @Path("seriesId") seriesId: String,
         @Query("seasonId") seasonId: String,
         @Query("userId") userId: String,
-        @Query("Fields") fields: String = "Overview,PrimaryImageAspectRatio,UserData"
+        @Query("Fields") fields: String = "Overview,PrimaryImageAspectRatio,UserData,MediaSources"
     ): Response<ItemsResponse>
     
     /**
@@ -216,6 +216,28 @@ interface JellyfinApi {
         @Header("X-Emby-Authorization") authorization: String,
         @Path("userId") userId: String,
         @Path("itemId") itemId: String
+    ): Response<UserItemData>
+    
+    /**
+     * 更新用户的媒体项数据（播放进度等）
+     * 
+     * 这是最可靠的保存播放进度的方式
+     * 
+     * API: POST /Users/{userId}/Items/{itemId}/UserData
+     * 
+     * @param authorization 认证头
+     * @param userId 用户 ID
+     * @param itemId 媒体项 ID
+     * @param request 用户数据请求体
+     * @return 更新后的用户数据
+     */
+    @Headers("Content-Type: application/json")
+    @POST("Users/{userId}/Items/{itemId}/UserData")
+    suspend fun updateUserItemData(
+        @Header("X-Emby-Authorization") authorization: String,
+        @Path("userId") userId: String,
+        @Path("itemId") itemId: String,
+        @Body request: UpdateUserDataRequest
     ): Response<UserItemData>
     
     // ==================== 播放进度 API ====================
@@ -304,6 +326,21 @@ data class PlaybackStopRequest(
     val itemId: String,
     @kotlinx.serialization.SerialName("PositionTicks")
     val positionTicks: Long
+)
+
+/**
+ * 更新用户数据请求
+ * 
+ * 用于直接更新用户对某个媒体项的数据（播放进度、是否已看完等）
+ */
+@kotlinx.serialization.Serializable
+data class UpdateUserDataRequest(
+    @kotlinx.serialization.SerialName("PlaybackPositionTicks")
+    val playbackPositionTicks: Long,
+    @kotlinx.serialization.SerialName("Played")
+    val played: Boolean? = null,
+    @kotlinx.serialization.SerialName("PlayCount")
+    val playCount: Int? = null
 )
 
 /**

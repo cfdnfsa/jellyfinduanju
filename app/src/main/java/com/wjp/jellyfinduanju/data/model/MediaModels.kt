@@ -298,22 +298,38 @@ data class EpisodeLocalData(
 ) {
     /**
      * 计算播放进度百分比
-     * @return 0-100 的进度值，如果没有时长信息则返回 0
+     * 
+     * 优先级：
+     * 1. 如果已标记为播放完成 (played=true)，返回 100%
+     * 2. 如果有播放进度，计算实际百分比
+     * 3. 否则返回 0
+     * 
+     * @return 0-100 的进度值
      */
     fun getProgressPercent(): Int {
+        // 已播放完成，返回 100%
+        if (played) return 100
+        // 没有时长信息，返回 0
         if (runTimeTicks <= 0) return 0
+        // 计算实际进度
         return ((playbackPositionTicks.toDouble() / runTimeTicks) * 100).toInt().coerceIn(0, 100)
     }
     
     /**
      * 格式化进度显示
-     * @return 进度文本，如 "80%" 或 "--"
+     * 
+     * 显示规则：
+     * - 已播放完成 → "100%"
+     * - 有播放进度 → "xx%"
+     * - 未播放 → "--"
+     * 
+     * @return 进度文本
      */
     fun getProgressText(): String {
-        return if (playbackPositionTicks > 0) {
-            "${getProgressPercent()}%"
-        } else {
-            "--"
+        return when {
+            played -> "100%"  // 已播放完成
+            playbackPositionTicks > 0 -> "${getProgressPercent()}%"  // 有播放进度
+            else -> "--"  // 未播放
         }
     }
     

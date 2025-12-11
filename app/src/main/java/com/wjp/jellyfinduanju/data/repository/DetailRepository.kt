@@ -6,6 +6,7 @@ import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
 import com.wjp.jellyfinduanju.data.model.SeasonLocalData
 import com.wjp.jellyfinduanju.data.network.JellyfinAuthHeader
 import com.wjp.jellyfinduanju.data.network.NetworkModule
+import com.wjp.jellyfinduanju.download.DownloadManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -212,10 +213,26 @@ class DetailRepository(
             return if (response.isSuccessful) {
                 val itemsResponse = response.body()
                 if (itemsResponse != null) {
+                    // 获取本地已有的剧集数据（用于保留缓存状态）
+                    val localEpisodes = episodeDataStore.getEpisodes(seasonId)
+                    val localEpisodeMap = localEpisodes?.associateBy { it.id } ?: emptyMap()
+                    
                     // 转换为本地数据模型
                     val episodes = itemsResponse.items.map { item ->
-                        EpisodeLocalData.fromMediaItem(item, seriesId).copy(
+                        val serverData = EpisodeLocalData.fromMediaItem(item, seriesId).copy(
                             seasonId = seasonId
+                        )
+                        
+                        // 检查实际缓存文件是否存在（防止数据丢失但文件还在的情况）
+                        val cachedFile = DownloadManager.getCachedVideoFile(seriesId, item.id)
+                        val actualIsCached = cachedFile != null && cachedFile.exists()
+                        val actualLocalPath = if (actualIsCached) cachedFile?.absolutePath else null
+                        
+                        // 优先使用实际文件状态，其次用本地数据
+                        val localData = localEpisodeMap[item.id]
+                        serverData.copy(
+                            isCached = actualIsCached || (localData?.isCached ?: false),
+                            localVideoPath = actualLocalPath ?: localData?.localVideoPath
                         )
                     }.sortedBy { it.episodeNumber }
                     
@@ -529,6 +546,68 @@ class DetailRepository(
         }
     }
     
+    /**
+     * 批量上报本地进度到服务器
+     * 
+     * 遍历所有季的所有剧集，将本地保存的进度上报到服务器
+     * 
+     * @param seriesId 剧集 ID
+     * @param seasons 季列表
+     * @return 上报成功的数量
+     */
+    suspend fun uploadLocalProgressToServer(
+        seriesId: String,
+        seasons: List<SeasonLocalData>
+    ): Int = withContext(Dispatchers.IO) {
+        var successCount = 0
+        
+        try {
+            val serverConfig = authRepository.serverConfig.first() ?: return@withContext 0
+            val userSession = authRepository.userSession.first() ?: return@withContext 0
+            val deviceId = authRepository.getDeviceId()
+            val deviceName = getDeviceName()
+            
+            val api = NetworkModule.createJellyfinApi(serverConfig.serverUrl)
+            val authHeader = JellyfinAuthHeader.buildAuthHeader(
+                deviceId = deviceId,
+                deviceName = deviceName,
+                token = userSession.accessToken
+            )
+            
+            // 遍历所有季
+            for (season in seasons) {
+                val episodes = episodeDataStore.getEpisodes(season.id) ?: continue
+                
+                // 遍历所有剧集
+                for (episode in episodes) {
+                    // 只上报有进度或已看完的剧集
+                    if (episode.playbackPositionTicks > 0 || episode.played) {
+                        try {
+                            // 使用 updateUserItemData API 直接更新用户数据
+                            val request = com.wjp.jellyfinduanju.data.network.UpdateUserDataRequest(
+                                playbackPositionTicks = episode.playbackPositionTicks,
+                                played = episode.played
+                            )
+                            val response = api.updateUserItemData(
+                                authorization = authHeader,
+                                userId = userSession.userId,
+                                itemId = episode.id,
+                                request = request
+                            )
+                            if (response.isSuccessful) {
+                                successCount++
+                            }
+                        } catch (_: Exception) { }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DetailRepository", "批量上报进度失败", e)
+        }
+        
+        successCount
+    }
+    
     // ==================== 辅助方法 ====================
     
     /**
@@ -538,3 +617,4 @@ class DetailRepository(
         return "${Build.MANUFACTURER} ${Build.MODEL}"
     }
 }
+
