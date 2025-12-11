@@ -101,7 +101,14 @@ data class MediaItem(
     val indexNumber: Int? = null,
     
     @SerialName("ParentIndexNumber")
-    val parentIndexNumber: Int? = null
+    val parentIndexNumber: Int? = null,
+    
+    @SerialName("ParentId")
+    val parentId: String? = null,
+    
+    /** 父项名称（媒体库/文件夹名称） */
+    @SerialName("ParentLogoItemId")
+    val parentLogoItemId: String? = null
 )
 
 /**
@@ -194,13 +201,29 @@ data class SeriesLocalData(
     val isDeletedFromServer: Boolean = false,
     val played: Boolean = false,
     val lastWatchTime: Long = 0,
-    val lastWatchPositionTicks: Long = 0
+    val lastWatchPositionTicks: Long = 0,
+    /** 用户自定义标签（多选，本地设置，不受同步影响） */
+    val customTags: List<String> = emptyList(),
+    /** 云端文件夹标签（从 Jellyfin 同步的文件夹名称） */
+    val cloudFolderTag: String? = null
 ) {
+    /**
+     * 获取所有标签（本地 + 云端）
+     */
+    fun getAllTags(): List<String> {
+        val tags = customTags.toMutableList()
+        cloudFolderTag?.let { if (it !in tags) tags.add(it) }
+        return tags
+    }
+    
     companion object {
         /**
          * 从 API 响应的 MediaItem 创建本地数据
+         * 
+         * @param item API 响应的 MediaItem
+         * @param parentName 父文件夹名称（用作云端标签）
          */
-        fun fromMediaItem(item: MediaItem): SeriesLocalData {
+        fun fromMediaItem(item: MediaItem, parentName: String? = null): SeriesLocalData {
             return SeriesLocalData(
                 id = item.id,
                 name = item.name,
@@ -210,7 +233,8 @@ data class SeriesLocalData(
                 primaryImageTag = item.imageTags?.primary,
                 seasonCount = item.childCount,
                 episodeCount = item.recursiveItemCount,
-                lastSyncTime = System.currentTimeMillis()
+                lastSyncTime = System.currentTimeMillis(),
+                cloudFolderTag = parentName
             )
         }
     }

@@ -145,6 +145,37 @@ object AppSettings {
             mmkv.encode(Keys.REPORT_INTERVAL, validValue)
         }
     
+    // ==================== 自定义标签 ====================
+    
+    /**
+     * 自定义标签列表
+     * 用逗号分隔存储
+     */
+    var customTags: List<String>
+        get() {
+            val tagsString = mmkv.decodeString(Keys.CUSTOM_TAGS) ?: return emptyList()
+            return if (tagsString.isEmpty()) emptyList() else tagsString.split(",")
+        }
+        set(value) {
+            mmkv.encode(Keys.CUSTOM_TAGS, value.joinToString(","))
+        }
+    
+    /**
+     * 添加自定义标签
+     */
+    fun addCustomTag(tag: String) {
+        if (tag.isNotBlank() && tag !in customTags) {
+            customTags = customTags + tag.trim()
+        }
+    }
+    
+    /**
+     * 删除自定义标签
+     */
+    fun removeCustomTag(tag: String) {
+        customTags = customTags.filter { it != tag }
+    }
+    
     // ==================== MMKV 键名 ====================
     private object Keys {
         const val IMAGE_CACHE_PATH = "image_cache_path"
@@ -155,6 +186,7 @@ object AppSettings {
         const val AUTO_PLAY_NEXT = "auto_play_next"
         const val SWIPE_THRESHOLD = "swipe_threshold"
         const val REPORT_INTERVAL = "report_interval"
+        const val CUSTOM_TAGS = "custom_tags"
     }
     
     /**

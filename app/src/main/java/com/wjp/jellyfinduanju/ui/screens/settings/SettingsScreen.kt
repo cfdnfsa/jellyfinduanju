@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -69,7 +70,8 @@ import com.wjp.jellyfinduanju.ui.theme.JellyfinDuanjuTheme
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
-    onNavigateToCacheSettings: () -> Unit = {}
+    onNavigateToCacheSettings: () -> Unit = {},
+    onNavigateToTagManage: () -> Unit = {}
 ) {
     // 收集 UI 状态
     val uiState by viewModel.uiState.collectAsState()
@@ -78,6 +80,7 @@ fun SettingsScreen(
     SettingsContent(
         uiState = uiState,
         onCacheSettingsClick = onNavigateToCacheSettings,
+        onTagManageClick = onNavigateToTagManage,
         onLogoutClick = { viewModel.showLogoutDialog() },
         onLogoutConfirm = {
             viewModel.hideLogoutDialog()
@@ -96,6 +99,7 @@ fun SettingsScreen(
 private fun SettingsContent(
     uiState: SettingsUiState,
     onCacheSettingsClick: () -> Unit,
+    onTagManageClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onLogoutConfirm: () -> Unit,
     onLogoutCancel: () -> Unit
@@ -221,6 +225,46 @@ private fun SettingsContent(
                     )
                     Text(
                         text = "图片和视频缓存路径、清除缓存",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            // 分隔线
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+            
+            // 自定义标签入口
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onTagManageClick)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Label,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "自定义标签",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "管理剧集分类标签",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -460,6 +504,7 @@ private fun PreviewSettingsScreen() {
                 )
             ),
             onCacheSettingsClick = {},
+            onTagManageClick = {},
             onLogoutClick = {},
             onLogoutConfirm = {},
             onLogoutCancel = {}
@@ -479,6 +524,7 @@ private fun PreviewLogoutDialog() {
                 showLogoutDialog = true
             ),
             onCacheSettingsClick = {},
+            onTagManageClick = {},
             onLogoutClick = {},
             onLogoutConfirm = {},
             onLogoutCancel = {}

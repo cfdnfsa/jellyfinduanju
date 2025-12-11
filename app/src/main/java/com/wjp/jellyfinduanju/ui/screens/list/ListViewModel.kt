@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
+import com.wjp.jellyfinduanju.data.repository.DetailRepository
 import com.wjp.jellyfinduanju.data.repository.SeriesRepository
+import com.wjp.jellyfinduanju.download.DownloadManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,11 +21,11 @@ import kotlinx.coroutines.launch
  * 2. 处理刷新操作
  * 3. 处理搜索筛选
  * 4. 提供图片 URL
- * 
- * @property seriesRepository 剧集数据仓库
+ * 5. 批量操作（标记已看/缓存/删除）
  */
 class ListViewModel(
-    private val seriesRepository: SeriesRepository
+    private val seriesRepository: SeriesRepository,
+    private val detailRepository: DetailRepository
 ) : ViewModel() {
     
     // ==================== UI 状态 ====================
@@ -165,23 +167,247 @@ class ListViewModel(
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }
+    
+    // ==================== 长按菜单操作 ====================
+    
+    /**
+     * 显示剧集菜单
+     */
+    fun showSeriesMenu(series: SeriesLocalData) {
+        _uiState.update { it.copy(selectedSeries = series) }
+    }
+    
+    /**
+     * 隐藏剧集菜单
+     */
+    fun hideSeriesMenu() {
+        _uiState.update { it.copy(selectedSeries = null) }
+    }
+    
+    /**
+     * 显示缓存全部对话框
+     */
+    fun showCacheAllDialog() {
+        _uiState.update { it.copy(dialogType = DialogType.CACHE_ALL) }
+    }
+    
+    /**
+     * 显示删除全部缓存对话框
+     */
+    fun showDeleteAllCacheDialog() {
+        _uiState.update { it.copy(dialogType = DialogType.DELETE_ALL_CACHE) }
+    }
+    
+    /**
+     * 隐藏对话框
+     */
+    fun hideDialog() {
+        _uiState.update { it.copy(dialogType = null, selectedSeries = null) }
+    }
+    
+    /**
+     * 显示标签设置对话框
+     */
+    fun showTagDialog() {
+        _uiState.update { it.copy(dialogType = DialogType.SET_TAG) }
+    }
+    
+    /**
+     * 切换剧集标签
+     * 
+     * @param tag 标签名称
+     * @param selected 是否选中
+     */
+    fun toggleSeriesTag(tag: String, selected: Boolean) {
+        val series = _uiState.value.selectedSeries ?: return
+        
+        if (selected) {
+            seriesRepository.addSeriesTag(series.id, tag)
+        } else {
+            seriesRepository.removeSeriesTag(series.id, tag)
+        }
+        
+        // 更新 selectedSeries 以刷新 UI
+        val updatedSeries = seriesRepository.getSeries(series.id)
+        if (updatedSeries != null) {
+            _uiState.update { it.copy(selectedSeries = updatedSeries) }
+        }
+    }
+    
+    /**
+     * 清除剧集所有自定义标签
+     */
+    fun clearSeriesTags() {
+        val series = _uiState.value.selectedSeries ?: return
+        seriesRepository.updateSeriesTags(series.id, emptyList())
+        hideDialog()
+    }
+    
+    // ==================== 批量操作 ====================
+    
+    /**
+     * 标记整个剧集为已看/未看
+     * 
+     * 直接调用 Jellyfin API 标记整个 Series，不影响各集的播放进度
+     * 本地更新状态，不重新请求服务器列表
+     * 
+     * @param watched true 标记为已看，false 标记为未看
+     */
+    fun markSeriesAsWatched(watched: Boolean) {
+        val series = _uiState.value.selectedSeries ?: return
+        hideSeriesMenu()
+        
+        viewModelScope.launch {
+            try {
+                // 1. 上报服务器
+                val result = detailRepository.markSeriesAsWatched(series.id, watched)
+                
+                result.fold(
+                    onSuccess = {
+                        // 2. 本地更新状态（不请求服务器）
+                        seriesRepository.updateSeriesPlayedStatus(series.id, watched)
+                        
+                        _uiState.update { 
+                            it.copy(error = if (watched) "已标记为看完" else "已标记为未看")
+                        }
+                    },
+                    onFailure = { e ->
+                        _uiState.update { 
+                            it.copy(error = "操作失败: ${e.message}")
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.update { 
+                    it.copy(error = "操作失败: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    /**
+     * 确认缓存全部
+     */
+    fun confirmCacheAll() {
+        val series = _uiState.value.selectedSeries ?: return
+        hideDialog()
+        
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            
+            try {
+                // 1. 获取该剧集的所有季
+                val seasonsResult = detailRepository.refreshSeasons(series.id)
+                seasonsResult.fold(
+                    onSuccess = { seasons ->
+                        // 收集所有未缓存的剧集
+                        val allEpisodesToDownload = mutableListOf<com.wjp.jellyfinduanju.data.model.EpisodeLocalData>()
+                        
+                        // 2. 获取每个季的剧集
+                        seasons.forEach { season ->
+                            val episodesResult = detailRepository.refreshEpisodes(series.id, season.id)
+                            episodesResult.fold(
+                                onSuccess = { episodes ->
+                                    // 收集未缓存的剧集
+                                    episodes.filter { !it.isCached }.forEach { episode ->
+                                        allEpisodesToDownload.add(episode)
+                                    }
+                                },
+                                onFailure = { }
+                            )
+                        }
+                        
+                        if (allEpisodesToDownload.isNotEmpty()) {
+                            // 3. 获取视频 URL
+                            val episodeIds = allEpisodesToDownload.map { it.id }
+                            val videoUrls = detailRepository.getVideoStreamUrls(episodeIds)
+                            
+                            // 4. 添加到下载队列
+                            DownloadManager.addDownloads(
+                                episodes = allEpisodesToDownload,
+                                seriesName = series.name,
+                                videoUrls = videoUrls
+                            )
+                        }
+                        
+                        _uiState.update { 
+                            it.copy(
+                                isLoading = false,
+                                error = if (allEpisodesToDownload.isNotEmpty()) 
+                                    "已添加 ${allEpisodesToDownload.size} 集到下载队列" 
+                                else 
+                                    "所有剧集已缓存"
+                            )
+                        }
+                    },
+                    onFailure = { e ->
+                        _uiState.update { 
+                            it.copy(isLoading = false, error = "获取剧集失败: ${e.message}")
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.update { 
+                    it.copy(isLoading = false, error = "操作失败: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    /**
+     * 确认删除全部缓存
+     */
+    fun confirmDeleteAllCache() {
+        val series = _uiState.value.selectedSeries ?: return
+        hideDialog()
+        
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            
+            try {
+                // 删除该剧集的所有视频缓存
+                val deletedCount = DownloadManager.deleteAllCacheForSeries(series.id)
+                
+                // 更新剧集的缓存状态
+                seriesRepository.updateVideoCacheStatus(series.id, false)
+                
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        error = if (deletedCount > 0) "已删除 $deletedCount 个缓存文件" else "没有找到缓存文件"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { 
+                    it.copy(isLoading = false, error = "删除失败: ${e.message}")
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 对话框类型
+ */
+enum class DialogType {
+    CACHE_ALL,
+    DELETE_ALL_CACHE,
+    SET_TAG
 }
 
 /**
  * ListUiState - 剧集列表页面的 UI 状态
- * 
- * @property isLoading 是否正在加载
- * @property seriesList 剧集列表（已筛选）
- * @property isEmpty 列表是否为空
- * @property error 错误信息
- * @property searchQuery 搜索关键词
  */
 data class ListUiState(
     val isLoading: Boolean = false,
     val seriesList: List<SeriesLocalData> = emptyList(),
     val isEmpty: Boolean = true,
     val error: String? = null,
-    val searchQuery: String = ""
+    val searchQuery: String = "",
+    /** 当前选中的剧集（用于显示菜单） */
+    val selectedSeries: SeriesLocalData? = null,
+    /** 当前显示的对话框类型 */
+    val dialogType: DialogType? = null
 )
 
 /**
@@ -190,12 +416,13 @@ data class ListUiState(
  * 用于创建带参数的 ViewModel
  */
 class ListViewModelFactory(
-    private val seriesRepository: SeriesRepository
+    private val seriesRepository: SeriesRepository,
+    private val detailRepository: DetailRepository
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ListViewModel::class.java)) {
-            return ListViewModel(seriesRepository) as T
+            return ListViewModel(seriesRepository, detailRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

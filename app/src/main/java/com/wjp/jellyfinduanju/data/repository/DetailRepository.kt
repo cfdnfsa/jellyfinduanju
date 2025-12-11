@@ -361,6 +361,50 @@ class DetailRepository(
         }
     }
     
+    // ==================== 标记整个剧集（Series）====================
+    
+    /**
+     * 标记整个剧集（Series）为已看/未看
+     * 
+     * 直接调用 Jellyfin 的 PlayedItems API 标记整个 Series
+     * 这不会影响各集的播放进度，只改变"已看完"状态
+     * 
+     * @param seriesId 剧集 ID
+     * @param played true 标记为已看，false 标记为未看
+     * @return 成功返回 true，失败返回异常
+     */
+    suspend fun markSeriesAsWatched(seriesId: String, played: Boolean): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val serverConfig = authRepository.serverConfig.first()
+                ?: return@withContext Result.failure(Exception("未配置服务器"))
+            val userSession = authRepository.userSession.first()
+                ?: return@withContext Result.failure(Exception("未登录"))
+            
+            val deviceId = authRepository.getDeviceId()
+            val deviceName = getDeviceName()
+            val api = NetworkModule.createJellyfinApi(serverConfig.serverUrl)
+            val authHeader = JellyfinAuthHeader.buildAuthHeader(
+                deviceId = deviceId,
+                deviceName = deviceName,
+                token = userSession.accessToken
+            )
+            
+            val response = if (played) {
+                api.markAsPlayed(authHeader, userSession.userId, seriesId)
+            } else {
+                api.unmarkAsPlayed(authHeader, userSession.userId, seriesId)
+            }
+            
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("操作失败: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("请求失败: ${e.message}"))
+        }
+    }
+    
     // ==================== 获取图片 URL ====================
     
     /**

@@ -504,5 +504,56 @@ object DownloadManager {
         val file = File(path)
         return if (file.exists()) file else null
     }
+    
+    /**
+     * 删除某个剧集的所有缓存
+     * 
+     * @param seriesId 剧集 ID
+     * @return 删除的文件数量
+     */
+    fun deleteAllCacheForSeries(seriesId: String): Int {
+        var deletedCount = 0
+        
+        try {
+            // 1. 取消该剧集的所有下载任务
+            val allTasks = downloadDataStore.getAllTasks()
+            allTasks.filter { it.seriesId == seriesId }.forEach { task ->
+                cancelDownload(task.episodeId)
+            }
+            
+            // 2. 删除该剧集目录下的所有视频文件
+            val seriesDir = File(AppSettings.videoCachePath, seriesId)
+            if (seriesDir.exists() && seriesDir.isDirectory) {
+                seriesDir.listFiles()?.forEach { file ->
+                    if (file.isFile && file.delete()) {
+                        deletedCount++
+                    }
+                }
+                // 删除空目录
+                seriesDir.delete()
+            }
+            
+            // 3. 更新该剧集所有季的剧集缓存状态
+            val seasons = episodeDataStore.getSeasons(seriesId)
+            seasons?.forEach { season ->
+                val episodes = episodeDataStore.getEpisodes(season.id)
+                episodes?.forEach { episode ->
+                    if (episode.isCached) {
+                        episodeDataStore.updateEpisodeCacheStatus(
+                            seasonId = season.id,
+                            episodeId = episode.id,
+                            isCached = false,
+                            localVideoPath = null
+                        )
+                    }
+                }
+            }
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        
+        return deletedCount
+    }
 }
 

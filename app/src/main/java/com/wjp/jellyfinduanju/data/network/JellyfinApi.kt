@@ -115,7 +115,25 @@ interface JellyfinApi {
         @Query("SortOrder") sortOrder: String = "Ascending",
         @Query("Fields") fields: String = "Overview,PrimaryImageAspectRatio,ChildCount",
         @Query("Limit") limit: Int? = null,
-        @Query("StartIndex") startIndex: Int? = null
+        @Query("StartIndex") startIndex: Int? = null,
+        @Query("ParentId") parentId: String? = null
+    ): Response<ItemsResponse>
+    
+    /**
+     * 获取用户媒体库列表（Views）
+     * 
+     * 返回用户可访问的所有媒体库（如"电视剧"、"动漫"、"电影"等）
+     * 
+     * API: GET /Users/{userId}/Views
+     * 
+     * @param authorization 认证头
+     * @param userId 用户 ID
+     * @return 媒体库列表
+     */
+    @GET("Users/{userId}/Views")
+    suspend fun getUserViews(
+        @Header("X-Emby-Authorization") authorization: String,
+        @Path("userId") userId: String
     ): Response<ItemsResponse>
     
     /**

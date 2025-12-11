@@ -1,9 +1,11 @@
 package com.wjp.jellyfinduanju.ui.screens.list
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,11 +26,24 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.ui.platform.LocalFocusManager
@@ -36,6 +51,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -93,6 +109,18 @@ fun ListScreen(
         uiState = uiState,
         onRefreshClick = { viewModel.refreshSeriesList() },
         onSeriesClick = onSeriesClick,
+        onSeriesLongClick = { series -> viewModel.showSeriesMenu(series) },
+        onDismissMenu = { viewModel.hideSeriesMenu() },
+        onMarkAsWatched = { viewModel.markSeriesAsWatched(true) },
+        onMarkAsUnwatched = { viewModel.markSeriesAsWatched(false) },
+        onCacheAll = { viewModel.showCacheAllDialog() },
+        onDeleteAllCache = { viewModel.showDeleteAllCacheDialog() },
+        onSetTag = { viewModel.showTagDialog() },
+        onConfirmCacheAll = { viewModel.confirmCacheAll() },
+        onConfirmDeleteAllCache = { viewModel.confirmDeleteAllCache() },
+        onToggleTag = { tag, selected -> viewModel.toggleSeriesTag(tag, selected) },
+        onClearTags = { viewModel.clearSeriesTags() },
+        onDismissDialog = { viewModel.hideDialog() },
         onErrorShown = { viewModel.clearError() },
         onSearchQueryChange = { viewModel.updateSearchQuery(it) },
         onClearSearch = { viewModel.clearSearch() },
@@ -104,14 +132,6 @@ fun ListScreen(
 
 /**
  * ListScreenContent - 列表页面内容（无状态组件）
- * 
- * @param uiState UI 状态
- * @param onRefreshClick 刷新按钮点击回调
- * @param onSeriesClick 剧集点击回调
- * @param onErrorShown 错误显示后的回调
- * @param onSearchQueryChange 搜索关键词变化回调
- * @param onClearSearch 清除搜索回调
- * @param getImageUrl 获取图片 URL 的回调
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,6 +139,18 @@ private fun ListScreenContent(
     uiState: ListUiState,
     onRefreshClick: () -> Unit,
     onSeriesClick: (SeriesLocalData) -> Unit,
+    onSeriesLongClick: (SeriesLocalData) -> Unit,
+    onDismissMenu: () -> Unit,
+    onMarkAsWatched: () -> Unit,
+    onMarkAsUnwatched: () -> Unit,
+    onCacheAll: () -> Unit,
+    onDeleteAllCache: () -> Unit,
+    onSetTag: () -> Unit,
+    onConfirmCacheAll: () -> Unit,
+    onConfirmDeleteAllCache: () -> Unit,
+    onToggleTag: (String, Boolean) -> Unit,
+    onClearTags: () -> Unit,
+    onDismissDialog: () -> Unit,
     onErrorShown: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onClearSearch: () -> Unit,
@@ -233,10 +265,185 @@ private fun ListScreenContent(
                 else -> {
                     SeriesGrid(
                         seriesList = uiState.seriesList,
+                        selectedSeries = uiState.selectedSeries,
                         onSeriesClick = onSeriesClick,
+                        onSeriesLongClick = onSeriesLongClick,
+                        onDismissMenu = onDismissMenu,
+                        onMarkAsWatched = onMarkAsWatched,
+                        onMarkAsUnwatched = onMarkAsUnwatched,
+                        onCacheAll = onCacheAll,
+                        onDeleteAllCache = onDeleteAllCache,
+                        onSetTag = onSetTag,
                         getImageUrl = getImageUrl
                     )
                 }
+            }
+        }
+    }
+    
+    // 确认对话框
+    uiState.dialogType?.let { dialogType ->
+        val series = uiState.selectedSeries ?: return@let
+        
+        when (dialogType) {
+            DialogType.CACHE_ALL, DialogType.DELETE_ALL_CACHE -> {
+                AlertDialog(
+                    onDismissRequest = onDismissDialog,
+                    title = {
+                        Text(
+                            text = when (dialogType) {
+                                DialogType.CACHE_ALL -> "缓存全部"
+                                DialogType.DELETE_ALL_CACHE -> "删除全部缓存"
+                                else -> ""
+                            }
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = when (dialogType) {
+                                DialogType.CACHE_ALL -> "确定要下载「${series.name}」的全部剧集吗？"
+                                DialogType.DELETE_ALL_CACHE -> "确定要删除「${series.name}」的全部本地缓存吗？"
+                                else -> ""
+                            }
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                when (dialogType) {
+                                    DialogType.CACHE_ALL -> onConfirmCacheAll()
+                                    DialogType.DELETE_ALL_CACHE -> onConfirmDeleteAllCache()
+                                    else -> {}
+                                }
+                            }
+                        ) {
+                            Text("确定")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = onDismissDialog) {
+                            Text("取消")
+                        }
+                    }
+                )
+            }
+            
+            DialogType.SET_TAG -> {
+                // 标签选择对话框（多选）
+                val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
+                AlertDialog(
+                    onDismissRequest = onDismissDialog,
+                    title = { Text("设置标签") },
+                    text = {
+                        Column {
+                            // ===== 系统标签（只读） =====
+                            Text(
+                                text = "系统标签",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            
+                            // 缓存状态标签
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (series.isVideoCached) Icons.Default.Download else Icons.Default.CloudQueue,
+                                    contentDescription = null,
+                                    tint = if (series.isVideoCached) 
+                                        MaterialTheme.colorScheme.tertiary 
+                                    else 
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (series.isVideoCached) "已缓存" else "未缓存",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (series.isVideoCached) 
+                                        MaterialTheme.colorScheme.tertiary 
+                                    else 
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            
+                            // 云端文件夹标签
+                            series.cloudFolderTag?.let { cloudTag ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = cloudTag,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            }
+                            
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                            
+                            // ===== 自定义标签（可编辑） =====
+                            Text(
+                                text = "自定义标签",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            
+                            if (customTags.isNotEmpty()) {
+                                customTags.forEach { tag ->
+                                    val isSelected = tag in series.customTags
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onToggleTag(tag, !isSelected) }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = isSelected,
+                                            onCheckedChange = { onToggleTag(tag, it) }
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(tag)
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = "暂无自定义标签，请到设置中添加",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = onDismissDialog) {
+                            Text("完成")
+                        }
+                    },
+                    dismissButton = {
+                        if (series.customTags.isNotEmpty()) {
+                            TextButton(onClick = onClearTags) {
+                                Text("清除全部")
+                            }
+                        }
+                    }
+                )
             }
         }
     }
@@ -245,16 +452,20 @@ private fun ListScreenContent(
 /**
  * SeriesGrid - 剧集网格列表
  * 
- * 一行三个的网格布局
- * 
- * @param seriesList 剧集列表
- * @param onSeriesClick 剧集点击回调
- * @param getImageUrl 获取图片 URL 的回调
+ * 一行三个的网格布局，支持长按显示菜单
  */
 @Composable
 private fun SeriesGrid(
     seriesList: List<SeriesLocalData>,
+    selectedSeries: SeriesLocalData?,
     onSeriesClick: (SeriesLocalData) -> Unit,
+    onSeriesLongClick: (SeriesLocalData) -> Unit,
+    onDismissMenu: () -> Unit,
+    onMarkAsWatched: () -> Unit,
+    onMarkAsUnwatched: () -> Unit,
+    onCacheAll: () -> Unit,
+    onDeleteAllCache: () -> Unit,
+    onSetTag: () -> Unit,
     getImageUrl: (String, (String?) -> Unit) -> Unit
 ) {
     LazyVerticalGrid(
@@ -270,7 +481,15 @@ private fun SeriesGrid(
         ) { series ->
             SeriesGridItem(
                 series = series,
+                isMenuExpanded = selectedSeries?.id == series.id,
                 onClick = { onSeriesClick(series) },
+                onLongClick = { onSeriesLongClick(series) },
+                onDismissMenu = onDismissMenu,
+                onMarkAsWatched = onMarkAsWatched,
+                onMarkAsUnwatched = onMarkAsUnwatched,
+                onCacheAll = onCacheAll,
+                onDeleteAllCache = onDeleteAllCache,
+                onSetTag = onSetTag,
                 getImageUrl = getImageUrl
             )
         }
@@ -280,16 +499,21 @@ private fun SeriesGrid(
 /**
  * SeriesGridItem - 剧集网格项
  * 
- * 显示单个剧集的封面图和标题
- * 
- * @param series 剧集数据
- * @param onClick 点击回调
- * @param getImageUrl 获取图片 URL 的回调
+ * 显示单个剧集的封面图和标题，支持长按显示菜单
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SeriesGridItem(
     series: SeriesLocalData,
+    isMenuExpanded: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onDismissMenu: () -> Unit,
+    onMarkAsWatched: () -> Unit,
+    onMarkAsUnwatched: () -> Unit,
+    onCacheAll: () -> Unit,
+    onDeleteAllCache: () -> Unit,
+    onSetTag: () -> Unit,
     getImageUrl: (String, (String?) -> Unit) -> Unit
 ) {
     // 图片 URL 状态
@@ -302,18 +526,22 @@ private fun SeriesGridItem(
         }
     }
     
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp
-        )
-    ) {
+    Box {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                ),
+            shape = RoundedCornerShape(8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 2.dp
+            )
+        ) {
         Column {
             // 图片区域
             Box(
@@ -435,6 +663,75 @@ private fun SeriesGridItem(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
+        }
+        }  // Card 闭合
+        
+        // 长按菜单
+        DropdownMenu(
+            expanded = isMenuExpanded,
+            onDismissRequest = onDismissMenu
+        ) {
+            // 标记已看/未看
+            if (series.played) {
+                DropdownMenuItem(
+                    text = { Text("标记为未看") },
+                    onClick = onMarkAsUnwatched,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.VisibilityOff,
+                            contentDescription = null
+                        )
+                    }
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text("标记为已看") },
+                    onClick = onMarkAsWatched,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Visibility,
+                            contentDescription = null
+                        )
+                    }
+                )
+            }
+            
+            // 缓存全部
+            DropdownMenuItem(
+                text = { Text("缓存全部") },
+                onClick = onCacheAll,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = null
+                    )
+                }
+            )
+            
+            // 删除全部缓存
+            DropdownMenuItem(
+                text = { Text("删除全部缓存") },
+                onClick = onDeleteAllCache,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            )
+            
+            // 设置标签
+            DropdownMenuItem(
+                text = { Text("设置标签") },
+                onClick = onSetTag,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Label,
+                        contentDescription = null
+                    )
+                }
+            )
         }
     }
 }
@@ -558,6 +855,18 @@ private fun PreviewListScreen() {
             ),
             onRefreshClick = {},
             onSeriesClick = {},
+            onSeriesLongClick = {},
+            onDismissMenu = {},
+            onMarkAsWatched = {},
+            onMarkAsUnwatched = {},
+            onCacheAll = {},
+            onDeleteAllCache = {},
+            onSetTag = {},
+            onConfirmCacheAll = {},
+            onConfirmDeleteAllCache = {},
+            onToggleTag = { _, _ -> },
+            onClearTags = {},
+            onDismissDialog = {},
             onErrorShown = {},
             onSearchQueryChange = {},
             onClearSearch = {},

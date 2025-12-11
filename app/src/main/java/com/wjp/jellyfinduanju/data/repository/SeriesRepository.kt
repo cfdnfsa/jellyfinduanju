@@ -85,88 +85,134 @@ class SeriesRepository(
                 token = userSession.accessToken
             )
             
-            // 获取剧集列表（只获取 Series 类型）
-            val response = api.getUserItems(
+            // 先获取媒体库列表
+            val viewsResponse = api.getUserViews(
                 authorization = authHeader,
-                userId = userSession.userId,
-                includeItemTypes = "Series",
-                recursive = true,
-                sortBy = "SortName",
-                sortOrder = "Ascending",
-                fields = "Overview,PrimaryImageAspectRatio,ChildCount,RecursiveItemCount,UserData"
+                userId = userSession.userId
             )
             
-            if (response.isSuccessful) {
-                val itemsResponse = response.body()
-                if (itemsResponse != null) {
-                    val serverItems = itemsResponse.items
-                    val serverItemIds = serverItems.map { it.id }.toSet()
+            // 按媒体库分组获取 Series，这样可以准确知道每个 Series 属于哪个媒体库
+            val allServerItems = mutableListOf<Pair<MediaItem, String?>>() // (item, 媒体库名称)
+            
+            if (viewsResponse.isSuccessful) {
+                val views = viewsResponse.body()?.items ?: emptyList()
+                android.util.Log.d("SeriesRepository", "获取到 ${views.size} 个媒体库")
+                
+                // 为每个媒体库获取其中的 Series
+                for (view in views) {
+                    android.util.Log.d("SeriesRepository", "媒体库: id=${view.id}, name=${view.name}, type=${view.type}")
                     
-                    // 获取本地所有剧集 ID
-                    val localItemIds = seriesDataStore.getAllSeriesIds()
+                    // 获取该媒体库下的所有 Series
+                    val libraryResponse = api.getUserItems(
+                        authorization = authHeader,
+                        userId = userSession.userId,
+                        includeItemTypes = "Series",
+                        recursive = true,
+                        sortBy = "SortName",
+                        sortOrder = "Ascending",
+                        fields = "Overview,PrimaryImageAspectRatio,ChildCount,RecursiveItemCount,UserData",
+                        parentId = view.id
+                    )
                     
-                    // 找出服务器上不存在的剧集
-                    val itemsNotOnServer = localItemIds.filter { localId ->
-                        localId !in serverItemIds
-                    }
-                    
-                    // 处理服务器上不存在的剧集
-                    itemsNotOnServer.forEach { itemId ->
-                        val localSeries = seriesDataStore.getSeries(itemId)
-                        if (localSeries != null) {
-                            if (localSeries.isVideoCached) {
-                                // 有视频缓存 → 标记为"已从服务器删除"
-                                seriesDataStore.saveSeries(
-                                    localSeries.copy(isDeletedFromServer = true)
-                                )
-                            } else {
-                                // 无视频缓存 → 删除本地数据 + 清理详情缓存
-                                deleteSeriesAndCleanup(itemId)
-                            }
+                    if (libraryResponse.isSuccessful) {
+                        val items = libraryResponse.body()?.items ?: emptyList()
+                        android.util.Log.d("SeriesRepository", "媒体库 ${view.name} 下有 ${items.size} 个剧集")
+                        items.forEach { item ->
+                            allServerItems.add(item to view.name)
                         }
                     }
-                    
-                    // 转换并保存新数据
-                    val newSeriesList = serverItems.map { item ->
-                        // 检查是否已有本地数据
-                        val existingData = seriesDataStore.getSeries(item.id)
-                        
-                        if (existingData != null) {
-                            // 更新现有数据，使用云端观看进度
-                            // 如果之前标记为已删除，现在恢复（服务器重新上传了）
-                            existingData.copy(
-                                name = item.name,
-                                overview = item.overview,
-                                type = item.type,
-                                productionYear = item.productionYear,
-                                primaryImageTag = item.imageTags?.primary,
-                                seasonCount = item.childCount,
-                                episodeCount = item.recursiveItemCount,
-                                lastSyncTime = System.currentTimeMillis(),
-                                isDeletedFromServer = false, // 恢复标记
-                                // 云端观看进度
-                                lastWatchPositionTicks = item.userData?.playbackPositionTicks ?: 0,
-                                lastWatchTime = parseIsoDateTime(item.userData?.lastPlayedDate),
-                                played = item.userData?.played ?: false
-                            )
-                        } else {
-                            // 创建新数据
-                            SeriesLocalData.fromMediaItem(item)
-                        }
+                }
+            } else {
+                android.util.Log.e("SeriesRepository", "获取媒体库失败: ${viewsResponse.code()}, 降级为获取全部")
+                // 降级：直接获取所有 Series（不带媒体库信息）
+                val fallbackResponse = api.getUserItems(
+                    authorization = authHeader,
+                    userId = userSession.userId,
+                    includeItemTypes = "Series",
+                    recursive = true,
+                    sortBy = "SortName",
+                    sortOrder = "Ascending",
+                    fields = "Overview,PrimaryImageAspectRatio,ChildCount,RecursiveItemCount,UserData"
+                )
+                if (fallbackResponse.isSuccessful) {
+                    fallbackResponse.body()?.items?.forEach { item ->
+                        allServerItems.add(item to null)
                     }
-                    
-                    // 保存到本地
-                    seriesDataStore.saveSeriesList(newSeriesList, clearOld = false)
-                    seriesDataStore.saveLastRefreshTime()
-                    
-                    // 下载图片（异步进行，不阻塞返回）
-                    downloadSeriesImages(serverConfig.serverUrl, serverItems)
-                    
-                    return@withContext Result.success(newSeriesList)
                 }
             }
             
-            Result.failure(Exception("获取剧集列表失败: ${response.code()}"))
+            if (allServerItems.isNotEmpty()) {
+                val serverItemIds = allServerItems.map { it.first.id }.toSet()
+                
+                // 获取本地所有剧集 ID
+                val localItemIds = seriesDataStore.getAllSeriesIds()
+                
+                // 找出服务器上不存在的剧集
+                val itemsNotOnServer = localItemIds.filter { localId ->
+                    localId !in serverItemIds
+                }
+                
+                // 处理服务器上不存在的剧集
+                itemsNotOnServer.forEach { itemId ->
+                    val localSeries = seriesDataStore.getSeries(itemId)
+                    if (localSeries != null) {
+                        if (localSeries.isVideoCached) {
+                            // 有视频缓存 → 标记为"已从服务器删除"
+                            seriesDataStore.saveSeries(
+                                localSeries.copy(isDeletedFromServer = true)
+                            )
+                        } else {
+                            // 无视频缓存 → 删除本地数据 + 清理详情缓存
+                            deleteSeriesAndCleanup(itemId)
+                        }
+                    }
+                }
+                
+                // 转换并保存新数据
+                val newSeriesList = allServerItems.map { (item, libraryName) ->
+                    // 检查是否已有本地数据
+                    val existingData = seriesDataStore.getSeries(item.id)
+                    
+                    if (existingData != null) {
+                        // 更新现有数据，使用云端观看进度
+                        // 如果之前标记为已删除，现在恢复（服务器重新上传了）
+                        // 重要：保留本地的 customTags，更新 cloudFolderTag
+                        existingData.copy(
+                            name = item.name,
+                            overview = item.overview,
+                            type = item.type,
+                            productionYear = item.productionYear,
+                            primaryImageTag = item.imageTags?.primary,
+                            seasonCount = item.childCount,
+                            episodeCount = item.recursiveItemCount,
+                            lastSyncTime = System.currentTimeMillis(),
+                            isDeletedFromServer = false, // 恢复标记
+                            // 云端观看进度
+                            lastWatchPositionTicks = item.userData?.playbackPositionTicks ?: 0,
+                            lastWatchTime = parseIsoDateTime(item.userData?.lastPlayedDate),
+                            played = item.userData?.played ?: false,
+                            // 更新云端文件夹标签
+                            cloudFolderTag = libraryName ?: existingData.cloudFolderTag
+                            // 注意：customTags 不在这里更新，保持原有值
+                        )
+                    } else {
+                        // 创建新数据
+                        SeriesLocalData.fromMediaItem(item, libraryName)
+                    }
+                }
+                
+                // 保存到本地
+                seriesDataStore.saveSeriesList(newSeriesList, clearOld = false)
+                seriesDataStore.saveLastRefreshTime()
+                
+                // 下载图片（异步进行，不阻塞返回）
+                val itemsForImageDownload = allServerItems.map { it.first }
+                downloadSeriesImages(serverConfig.serverUrl, itemsForImageDownload)
+                
+                return@withContext Result.success(newSeriesList)
+            }
+            
+            Result.failure(Exception("获取剧集列表失败"))
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(Exception("刷新失败: ${e.message}"))
@@ -185,6 +231,66 @@ class SeriesRepository(
      */
     fun getSeries(seriesId: String): SeriesLocalData? {
         return seriesDataStore.getSeries(seriesId)
+    }
+    
+    /**
+     * 更新剧集的播放状态（本地）
+     * 
+     * @param seriesId 剧集 ID
+     * @param played 是否已看完
+     */
+    fun updateSeriesPlayedStatus(seriesId: String, played: Boolean) {
+        val series = seriesDataStore.getSeries(seriesId) ?: return
+        seriesDataStore.saveSeries(series.copy(played = played))
+    }
+    
+    /**
+     * 更新剧集的自定义标签
+     * 
+     * @param seriesId 剧集 ID
+     * @param tags 标签列表
+     */
+    fun updateSeriesTags(seriesId: String, tags: List<String>) {
+        val series = seriesDataStore.getSeries(seriesId) ?: return
+        seriesDataStore.saveSeries(series.copy(customTags = tags))
+    }
+    
+    /**
+     * 添加剧集标签
+     * 
+     * @param seriesId 剧集 ID
+     * @param tag 要添加的标签
+     */
+    fun addSeriesTag(seriesId: String, tag: String) {
+        val series = seriesDataStore.getSeries(seriesId) ?: return
+        if (tag !in series.customTags) {
+            seriesDataStore.saveSeries(series.copy(customTags = series.customTags + tag))
+        }
+    }
+    
+    /**
+     * 移除剧集标签
+     * 
+     * @param seriesId 剧集 ID
+     * @param tag 要移除的标签
+     */
+    fun removeSeriesTag(seriesId: String, tag: String) {
+        val series = seriesDataStore.getSeries(seriesId) ?: return
+        seriesDataStore.saveSeries(series.copy(customTags = series.customTags.filter { it != tag }))
+    }
+    
+    /**
+     * 从所有剧集中移除指定标签
+     * 
+     * @param tag 要移除的标签
+     */
+    fun removeTagFromAllSeries(tag: String) {
+        val allSeries = seriesDataStore.getAllSeries()
+        allSeries.forEach { series ->
+            if (tag in series.customTags) {
+                seriesDataStore.saveSeries(series.copy(customTags = series.customTags.filter { it != tag }))
+            }
+        }
     }
     
     // ==================== 图片管理 ====================

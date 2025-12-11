@@ -39,6 +39,7 @@ import com.wjp.jellyfinduanju.ui.screens.settings.SettingsScreen
 import com.wjp.jellyfinduanju.ui.screens.settings.SettingsViewModel
 import com.wjp.jellyfinduanju.ui.screens.settings.SettingsViewModelFactory
 import com.wjp.jellyfinduanju.ui.screens.settings.cache.CacheSettingsScreen
+import com.wjp.jellyfinduanju.ui.screens.settings.TagManageScreen
 import com.wjp.jellyfinduanju.ui.screens.player.PlayerScreen
 import com.wjp.jellyfinduanju.ui.screens.player.PlayerViewModel
 import com.wjp.jellyfinduanju.ui.screens.player.PlayerViewModelFactory
@@ -52,6 +53,7 @@ import com.wjp.jellyfinduanju.ui.screens.player.PlayerViewModelFactory
  */
 private object Routes {
     const val CACHE_SETTINGS = "cache_settings"
+    const val TAG_MANAGE = "tag_manage"
     const val SERIES_DETAIL = "series_detail/{seriesId}"
     const val PLAYER = "player/{seriesId}/{episodeId}"
     
@@ -236,6 +238,7 @@ private fun MainNavHost(
     // 获取 Repository
     val authRepository = JellyfinApp.instance.authRepository
     val seriesRepository = JellyfinApp.instance.seriesRepository
+    val detailRepository = JellyfinApp.instance.detailRepository
     
     NavHost(
         navController = navController,
@@ -247,7 +250,7 @@ private fun MainNavHost(
         // 列表页
         composable(BottomNavItem.List.route) {
             val listViewModel: ListViewModel = viewModel(
-                factory = ListViewModelFactory(seriesRepository)
+                factory = ListViewModelFactory(seriesRepository, detailRepository)
             )
             ListScreen(
                 viewModel = listViewModel,
@@ -284,6 +287,9 @@ private fun MainNavHost(
                 viewModel = settingsViewModel,
                 onNavigateToCacheSettings = {
                     navController.navigate(Routes.CACHE_SETTINGS)
+                },
+                onNavigateToTagManage = {
+                    navController.navigate(Routes.TAG_MANAGE)
                 }
             )
         }
@@ -294,6 +300,17 @@ private fun MainNavHost(
         composable(Routes.CACHE_SETTINGS) {
             CacheSettingsScreen(
                 onBack = { navController.popBackStack() }
+            )
+        }
+        
+        // 标签管理页面
+        composable(Routes.TAG_MANAGE) {
+            TagManageScreen(
+                onBack = { navController.popBackStack() },
+                onDeleteTag = { tag ->
+                    // 删除标签时，从所有剧集中移除该标签
+                    seriesRepository.removeTagFromAllSeries(tag)
+                }
             )
         }
         
