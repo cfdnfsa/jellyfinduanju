@@ -89,11 +89,46 @@ object AppSettings {
             mmkv.encode(Keys.MAX_CONCURRENT_DOWNLOADS, value.coerceIn(1, 5))
         }
     
+    // ==================== 播放设置 ====================
+    
+    /**
+     * 长按倍速
+     * 默认 3.0x，可选 2.0/3.0/4.0/5.0
+     */
+    var longPressSpeed: Float
+        get() = mmkv.decodeFloat(Keys.LONG_PRESS_SPEED, 3.0f)
+        set(value) {
+            mmkv.encode(Keys.LONG_PRESS_SPEED, value)
+        }
+    
+    /**
+     * 默认播放倍速
+     * 默认 1.0x，可选 0.5/0.75/1.0/1.25/1.5/2.0
+     */
+    var defaultPlaybackSpeed: Float
+        get() = mmkv.decodeFloat(Keys.DEFAULT_PLAYBACK_SPEED, 1.0f)
+        set(value) {
+            mmkv.encode(Keys.DEFAULT_PLAYBACK_SPEED, value)
+        }
+    
+    /**
+     * 自动播放下一集
+     * 默认开启
+     */
+    var autoPlayNext: Boolean
+        get() = mmkv.decodeBool(Keys.AUTO_PLAY_NEXT, true)
+        set(value) {
+            mmkv.encode(Keys.AUTO_PLAY_NEXT, value)
+        }
+    
     // ==================== MMKV 键名 ====================
     private object Keys {
         const val IMAGE_CACHE_PATH = "image_cache_path"
         const val VIDEO_CACHE_PATH = "video_cache_path"
         const val MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads"
+        const val LONG_PRESS_SPEED = "long_press_speed"
+        const val DEFAULT_PLAYBACK_SPEED = "default_playback_speed"
+        const val AUTO_PLAY_NEXT = "auto_play_next"
     }
     
     /**
