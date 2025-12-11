@@ -33,6 +33,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -143,24 +144,27 @@ fun PlayerScreen(
     /** 选集弹窗状态（Material3 BottomSheet） */
     val episodeSelectorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
-    /** 控制栏显示状态 */
+    /** 控制栏显示状态（横屏模式使用） */
     var showControls by remember { mutableStateOf(true) }
     
+    /** 播放按钮显示状态（横屏模式使用） */
+    var showPlayButton by remember { mutableStateOf(true) }
+    
     // ============================================================================
-    // 副作用：自动隐藏控制栏
+    // 副作用：自动隐藏控制栏（仅横屏模式）
     // ============================================================================
     
     /**
-     * 3 秒无操作自动隐藏控制栏
+     * 3 秒无操作自动隐藏（仅横屏模式）
      * 
-     * 当 showControls 变为 true 时启动计时器
-     * 3 秒后自动设为 false
-     * 如果用户在 3 秒内再次点击，会取消当前计时器并重新开始
+     * 竖屏模式：不隐藏任何东西，点击直接暂停/播放
+     * 横屏模式：隐藏所有控制栏（顶部、底部、播放按钮）
      */
-    LaunchedEffect(showControls) {
-        if (showControls) {
+    LaunchedEffect(showControls, uiState.isFullscreen) {
+        if (uiState.isFullscreen && showControls) {
             delay(3000)
             showControls = false
+            showPlayButton = false
         }
     }
     
@@ -184,34 +188,43 @@ fun PlayerScreen(
     // ============================================================================
     
     /**
-     * 隐藏系统导航栏
+     * 系统 UI 控制（状态栏和导航栏）
      * 
-     * 进入播放页面时隐藏底部导航栏，实现全屏沉浸效果
-     * 退出时恢复显示
+     * 竖屏模式：
+     * - 使用默认系统行为（内容不延伸到状态栏）
+     * - 隐藏底部导航栏
      * 
-     * 使用 WindowCompat 和 WindowInsetsController 实现（Android 12+ 推荐方式）
+     * 横屏模式：
+     * - 内容延伸到系统栏区域
+     * - 隐藏状态栏和导航栏（真正全屏）
      */
-    DisposableEffect(activity) {
+    LaunchedEffect(uiState.isFullscreen) {
         activity?.window?.let { window ->
-            // 让内容扩展到系统栏区域（状态栏、导航栏）
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            
-            // 获取 InsetsController
             val controller = WindowCompat.getInsetsController(window, window.decorView)
             
-            // 隐藏导航栏
-            controller.hide(WindowInsetsCompat.Type.navigationBars())
-            
-            // 设置行为：从边缘滑动可临时显示导航栏
-            controller.systemBarsBehavior = 
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (uiState.isFullscreen) {
+                // 横屏模式：让内容扩展到系统栏区域，隐藏所有系统栏
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior = 
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                // 竖屏模式：使用默认行为，只隐藏导航栏
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+                controller.show(WindowInsetsCompat.Type.statusBars())
+                controller.hide(WindowInsetsCompat.Type.navigationBars())
+                controller.systemBarsBehavior = 
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
         }
-        
+    }
+    
+    DisposableEffect(activity) {
         onDispose {
-            // 退出时恢复导航栏
+            // 退出时恢复所有系统栏
             activity?.window?.let { window ->
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
-                controller.show(WindowInsetsCompat.Type.navigationBars())
+                controller.show(WindowInsetsCompat.Type.systemBars())
                 WindowCompat.setDecorFitsSystemWindows(window, true)
             }
         }
@@ -336,7 +349,17 @@ fun PlayerScreen(
                     episode = uiState.allEpisodes[page],
                     isCurrentPage = isCurrentPage,
                     showControls = showControls && isCurrentPage,
-                    onToggleControls = { showControls = !showControls },
+                    showPlayButton = showPlayButton && isCurrentPage,
+                    onToggleControls = {
+                        // 横屏模式：切换所有控制栏
+                        // 竖屏模式：直接暂停/播放视频
+                        if (uiState.isFullscreen) {
+                            showControls = !showControls
+                            showPlayButton = showControls  // 同步
+                        } else {
+                            viewModel.togglePlayPause()
+                        }
+                    },
                     onTogglePlayPause = { viewModel.togglePlayPause() },
                     onSeek = { viewModel.seekTo(it) },
                     onSeekStart = { viewModel.onSeekStart() },
@@ -456,8 +479,9 @@ fun PlayerScreen(
  * @param uiState 播放器 UI 状态
  * @param episode 当前页面对应的剧集数据
  * @param isCurrentPage 是否为当前显示的页面（用于决定是否播放）
- * @param showControls 是否显示控制栏
- * @param onToggleControls 切换控制栏显示
+ * @param showControls 是否显示控制栏（横屏模式使用）
+ * @param showPlayButton 是否显示播放按钮（竖屏模式只控制播放按钮）
+ * @param onToggleControls 切换控制栏/播放按钮显示
  * @param onTogglePlayPause 切换播放/暂停
  * @param onSeek 跳转到指定位置
  * @param onSeekStart 开始拖动（暂停播放）
@@ -482,6 +506,7 @@ private fun PlayerContent(
     episode: com.wjp.jellyfinduanju.data.model.EpisodeLocalData,
     isCurrentPage: Boolean,
     showControls: Boolean,
+    showPlayButton: Boolean,
     onToggleControls: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -724,12 +749,18 @@ private fun PlayerContent(
         
         // ==================== 控制层 ====================
         
-        if (showControls) {
+        // 顶部和底部控制栏的显示逻辑：
+        // - 竖屏模式：始终显示
+        // - 横屏模式：受 showControls 控制
+        val showBars = !uiState.isFullscreen || showControls
+        
+        if (showBars) {
             // 顶部渐变遮罩（从黑到透明）
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(100.dp)
+                    .align(Alignment.TopStart)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
@@ -745,36 +776,14 @@ private fun PlayerContent(
                 seriesName = uiState.series.name,
                 episodeTitle = "第${episode.episodeNumber}集 ${episode.name}",
                 playbackSpeed = uiState.playbackSpeed,
-                isLongPressSpeed = uiState.isLongPressSpeed,
-                longPressSpeedValue = uiState.longPressSpeedValue,
                 isFullscreen = uiState.isFullscreen,
                 onBack = onBack,
                 onSpeedClick = onShowSpeedSelector,
                 modifier = Modifier
+                    .fillMaxWidth()
                     .align(Alignment.TopStart)
-                    .padding(top = 8.dp)
-                    .then(
-                        // 横屏时需要避开刘海/圆角
-                        if (uiState.isFullscreen) Modifier.navigationBarsPadding() 
-                        else Modifier
-                    )
+                    .padding(top = 16.dp)  // 标题往下 16dp
             )
-            
-            // 中央播放/暂停按钮
-            IconButton(
-                onClick = onTogglePlayPause,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(72.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-            ) {
-                Icon(
-                    imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (uiState.isPlaying) "暂停" else "播放",
-                    tint = Color.White,
-                    modifier = Modifier.size(48.dp)
-                )
-            }
             
             // 底部渐变遮罩（从透明到黑）
             Box(
@@ -805,13 +814,45 @@ private fun PlayerContent(
                 onSeekEnd = onSeekEnd,
                 onShowEpisodeSelector = onShowEpisodeSelector,
                 onToggleFullscreen = onToggleFullscreen,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .then(
-                        if (uiState.isFullscreen) Modifier.navigationBarsPadding() 
-                        else Modifier
-                    )
+                modifier = Modifier.align(Alignment.BottomCenter)
             )
+        }
+        
+        // 中央播放/暂停按钮：只在横屏模式下显示，受 showPlayButton 控制
+        if (uiState.isFullscreen && showPlayButton) {
+            IconButton(
+                onClick = onTogglePlayPause,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(72.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (uiState.isPlaying) "暂停" else "播放",
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+        }
+        
+        // ==================== 长按倍速提示（始终显示，不受控制栏影响） ====================
+        if (uiState.isLongPressSpeed) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 80.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "${uiState.longPressSpeedValue}x 快进中",
+                    color = Color(0xFFFF6B00),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
@@ -821,7 +862,7 @@ private fun PlayerContent(
  * PlayerTopBar - 顶部控制栏
  * ============================================================================
  * 
- * 包含：返回按钮、剧名、集数标题、长按倍速提示、倍速按钮
+ * 包含：返回按钮、剧名、集数标题、倍速按钮
  * 横屏时增加水平内边距以避开刘海/圆角
  */
 @Composable
@@ -829,20 +870,15 @@ private fun PlayerTopBar(
     seriesName: String,
     episodeTitle: String,
     playbackSpeed: Float,
-    isLongPressSpeed: Boolean,
-    longPressSpeedValue: Float,
     isFullscreen: Boolean,
     onBack: () -> Unit,
     onSpeedClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 横屏时增加水平内边距
-    val horizontalPadding = if (isFullscreen) 24.dp else 8.dp
-    
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding, vertical = 4.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 返回按钮
@@ -876,21 +912,6 @@ private fun PlayerTopBar(
         }
         
         Spacer(modifier = Modifier.width(8.dp))
-        
-        // 长按倍速提示（橙色高亮，显示实际倍速）
-        if (isLongPressSpeed) {
-            Text(
-                text = "${longPressSpeedValue}x 快进中",
-                color = Color(0xFFFF6B00),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.6f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-        }
         
         // 倍速按钮
         Row(
@@ -937,7 +958,7 @@ private fun PlayerBottomBar(
     onToggleFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val horizontalPadding = if (isFullscreen) 32.dp else 16.dp
+    val horizontalPadding = 16.dp
     
     // ==================== 进度条拖动状态 ====================
     
@@ -964,11 +985,14 @@ private fun PlayerBottomBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding, vertical = 8.dp)
+            .padding(horizontal = horizontalPadding)
+            .padding(top = 44.dp, bottom = 0.dp)
     ) {
         // ==================== 进度条行 ====================
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp),  // 增加高度让文字完整显示
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 当前时间（拖动时高亮）
@@ -1019,8 +1043,7 @@ private fun PlayerBottomBar(
         // ==================== 选集栏 ====================
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -1300,3 +1323,4 @@ private fun SpeedSelectorDialog(
         }
     }
 }
+
