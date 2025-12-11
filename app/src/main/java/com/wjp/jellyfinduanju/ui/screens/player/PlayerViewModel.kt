@@ -237,12 +237,42 @@ class PlayerViewModel(
      * @param duration 视频总时长（毫秒）
      * 
      * 由 VideoPlayer 定期回调，同时检测是否播放完成（>= 95%）
+     * 同时更新 allEpisodes 和 episodesBySeasonId 中当前剧集的进度（用于选集弹窗显示）
      */
     fun updateProgress(currentPosition: Long, duration: Long) {
-        _uiState.update { 
-            it.copy(
+        val currentEpisode = uiState.value.currentEpisode ?: return
+        val positionTicks = currentPosition * 10_000  // 毫秒转 ticks
+        val durationTicks = duration * 10_000
+        
+        _uiState.update { state ->
+            // 更新 allEpisodes 中当前剧集的进度
+            val updatedAllEpisodes = state.allEpisodes.map { ep ->
+                if (ep.id == currentEpisode.id) {
+                    ep.copy(
+                        playbackPositionTicks = positionTicks,
+                        runTimeTicks = if (durationTicks > 0) durationTicks else ep.runTimeTicks
+                    )
+                } else ep
+            }
+            
+            // 更新 episodesBySeasonId 中当前剧集的进度
+            val updatedMap = state.episodesBySeasonId.toMutableMap()
+            currentEpisode.seasonId.let { seasonId ->
+                updatedMap[seasonId] = updatedMap[seasonId]?.map { ep ->
+                    if (ep.id == currentEpisode.id) {
+                        ep.copy(
+                            playbackPositionTicks = positionTicks,
+                            runTimeTicks = if (durationTicks > 0) durationTicks else ep.runTimeTicks
+                        )
+                    } else ep
+                } ?: emptyList()
+            }
+            
+            state.copy(
                 currentPosition = currentPosition,
-                duration = duration
+                duration = duration,
+                allEpisodes = updatedAllEpisodes,
+                episodesBySeasonId = updatedMap
             )
         }
         
