@@ -242,7 +242,9 @@ fun PlayerScreen(
                         }
                     },
                     onPlaybackStateChanged = { isPlaying ->
-                        if (isCurrentPage) {
+                        // 只在非 seeking/切换集数 状态下同步播放器状态
+                        // 避免 seek 或切换时的 buffering 覆盖用户意图
+                        if (isCurrentPage && !viewModel.isSeeking() && !viewModel.isChangingEpisode()) {
                             viewModel.setPlaying(isPlaying)
                         }
                     },
@@ -598,8 +600,8 @@ private fun PlayerContent(
                 onBack = onBack,
                 onSpeedClick = onShowSpeedSelector,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
+                    .align(Alignment.TopStart)
+                    .padding(top = 8.dp)  // 顶部留一点间距
                     .then(
                         if (uiState.isFullscreen) Modifier.navigationBarsPadding() 
                         else Modifier
@@ -684,7 +686,7 @@ private fun PlayerTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding, vertical = 8.dp),
+            .padding(horizontal = horizontalPadding, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 返回按钮

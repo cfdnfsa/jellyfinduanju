@@ -284,39 +284,79 @@ class PlayerViewModel(
     }
     
     /**
-     * 保存当前播放进度
+     * 保存当前播放进度（静默处理，失败不影响）
      * 
      * @param force 是否强制保存（忽略时间间隔检查）
      */
     private suspend fun saveCurrentProgress(force: Boolean = false) {
-        val state = _uiState.value
-        val episode = state.currentEpisode ?: return
-        
-        // 如果没有有效进度，不保存
-        if (state.currentPosition <= 0) return
-        
-        val now = System.currentTimeMillis()
-        if (!force && now - lastProgressSaveTime < progressSaveInterval / 2) {
-            return
+        try {
+            val state = _uiState.value
+            val episode = state.currentEpisode ?: return
+            
+            // 如果没有有效进度，不保存
+            if (state.currentPosition <= 0) return
+            
+            val now = System.currentTimeMillis()
+            if (!force && now - lastProgressSaveTime < progressSaveInterval / 2) {
+                return
+            }
+            lastProgressSaveTime = now
+            
+            // 转换为 ticks（1秒 = 10,000,000 ticks）
+            val positionTicks = state.currentPosition * 10_000
+            
+            // 保存到本地
+            detailRepository.savePlaybackPositionLocal(
+                seasonId = episode.seasonId,
+                episodeId = episode.id,
+                positionTicks = positionTicks
+            )
+            
+            // 上报到服务器（静默，失败不处理）
+            try {
+                detailRepository.reportPlaybackProgress(
+                    episodeId = episode.id,
+                    positionTicks = positionTicks,
+                    isPaused = !state.isPlaying
+                )
+            } catch (_: Exception) {
+                // 静默处理，汇报失败不影响使用
+            }
+        } catch (_: Exception) {
+            // 静默处理
         }
-        lastProgressSaveTime = now
-        
-        // 转换为 ticks（1秒 = 10,000,000 ticks）
-        val positionTicks = state.currentPosition * 10_000
-        
-        // 保存到本地
-        detailRepository.savePlaybackPositionLocal(
-            seasonId = episode.seasonId,
-            episodeId = episode.id,
-            positionTicks = positionTicks
-        )
-        
-        // 上报到服务器
-        detailRepository.reportPlaybackProgress(
-            episodeId = episode.id,
-            positionTicks = positionTicks,
-            isPaused = !state.isPlaying
-        )
+    }
+    
+    /**
+     * 立即汇报当前进度到服务器（静默处理）
+     * 用于 seek 结束后立即汇报
+     */
+    private fun reportProgressToServer() {
+        viewModelScope.launch {
+            try {
+                val state = _uiState.value
+                val episode = state.currentEpisode ?: return@launch
+                if (state.currentPosition <= 0) return@launch
+                
+                val positionTicks = state.currentPosition * 10_000
+                
+                // 保存到本地
+                detailRepository.savePlaybackPositionLocal(
+                    seasonId = episode.seasonId,
+                    episodeId = episode.id,
+                    positionTicks = positionTicks
+                )
+                
+                // 汇报到服务器（静默）
+                detailRepository.reportPlaybackProgress(
+                    episodeId = episode.id,
+                    positionTicks = positionTicks,
+                    isPaused = false
+                )
+            } catch (_: Exception) {
+                // 静默处理
+            }
+        }
     }
     
     /**
@@ -333,46 +373,61 @@ class PlayerViewModel(
     }
     
     /**
-     * 清除跳转位置（已处理）
+     * 清除跳转位置（seek 完成后调用）
      */
     fun clearSeekPosition() {
+        _isSeeking = false  // seek 完成，可以响应播放状态回调了
+        _isChangingEpisode = false  // 切换集数也完成了
         _uiState.update { it.copy(seekToPosition = null) }
     }
     
-    // 是否正在拖动进度条（防止重复调用）
-    private var isSeeking = false
+    // 是否正在 seeking（用于忽略 seek 期间的播放状态回调）
+    private var _isSeeking = false
+    
+    // 是否正在切换集数（用于忽略切换期间旧视频的播放状态回调）
+    private var _isChangingEpisode = false
+    
+    /**
+     * 是否正在 seeking
+     */
+    fun isSeeking(): Boolean = _isSeeking
+    
+    /**
+     * 是否正在切换集数
+     */
+    fun isChangingEpisode(): Boolean = _isChangingEpisode
     
     /**
      * 开始拖动进度条（暂停播放）
      */
     fun onSeekStart() {
-        if (!isSeeking) {
-            isSeeking = true
+        if (!_isSeeking) {
+            _isSeeking = true
             _uiState.update { it.copy(isPlaying = false) }
         }
     }
     
     /**
      * 结束拖动进度条（恢复播放）
+     * 注意：_isSeeking 在 clearSeekPosition 中设为 false（seek 完成后）
      * 
-     * @param targetPosition 如果提供，则先跳转到该位置再恢复播放
+     * @param targetPosition 如果提供，则跳转到该位置并恢复播放
      */
     fun onSeekEnd(targetPosition: Long? = null) {
-        if (isSeeking) {
-            isSeeking = false
-            // 如果提供了目标位置，先跳转
-            if (targetPosition != null) {
-                _uiState.update { 
-                    it.copy(
-                        seekToPosition = targetPosition,
-                        currentPosition = targetPosition,
-                        isPlaying = true  // 同时恢复播放
-                    ) 
-                }
-            } else {
-                // 直接恢复播放
-                _uiState.update { it.copy(isPlaying = true) }
+        // 不在这里设置 _isSeeking = false，等 seek 完成后再设置
+        if (targetPosition != null) {
+            _uiState.update { 
+                it.copy(
+                    seekToPosition = targetPosition,
+                    currentPosition = targetPosition,
+                    isPlaying = true  // 恢复播放
+                ) 
             }
+            // 立即汇报新进度到服务器（静默）
+            reportProgressToServer()
+        } else {
+            _isSeeking = false  // 没有目标位置，直接结束
+            _uiState.update { it.copy(isPlaying = true) }
         }
     }
     
@@ -452,7 +507,7 @@ class PlayerViewModel(
     /**
      * 加载当前剧集的视频源
      * 优先使用本地缓存，否则从网络获取
-     * 同时恢复上次播放位置
+     * 同时恢复上次播放位置（历史进度）
      */
     fun loadVideoSource() {
         val episode = _uiState.value.currentEpisode ?: return
@@ -460,7 +515,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isVideoLoading = true, videoError = null, hasReportedComplete = false) }
             
-            // 获取保存的播放位置（转换 ticks 为毫秒）
+            // 获取保存的播放位置（转换 ticks 为毫秒）- 恢复历史进度
             val savedPosition = episode.playbackPositionTicks / 10_000
             if (savedPosition > 0) {
                 _uiState.update { it.copy(seekToPosition = savedPosition) }
@@ -478,8 +533,15 @@ class PlayerViewModel(
                     )
                 }
                 
-                // 上报播放开始
-                detailRepository.reportPlaybackStart(episode.id, episode.playbackPositionTicks)
+                // 如果没有历史进度，直接清除切换标志（不需要等 seek 完成）
+                if (savedPosition <= 0) {
+                    _isChangingEpisode = false
+                }
+                
+                // 上报播放开始（静默）
+                try {
+                    detailRepository.reportPlaybackStart(episode.id, episode.playbackPositionTicks)
+                } catch (_: Exception) { }
                 return@launch
             }
             
@@ -495,9 +557,17 @@ class PlayerViewModel(
                     )
                 }
                 
-                // 上报播放开始
-                detailRepository.reportPlaybackStart(episode.id, episode.playbackPositionTicks)
+                // 如果没有历史进度，直接清除切换标志
+                if (savedPosition <= 0) {
+                    _isChangingEpisode = false
+                }
+                
+                // 上报播放开始（静默）
+                try {
+                    detailRepository.reportPlaybackStart(episode.id, episode.playbackPositionTicks)
+                } catch (_: Exception) { }
             } else {
+                _isChangingEpisode = false  // 加载失败也要清除
                 _uiState.update { 
                     it.copy(
                         isVideoLoading = false,
@@ -510,14 +580,20 @@ class PlayerViewModel(
     
     /**
      * 当切换剧集后重新加载视频源
+     * 1. 保存当前进度到服务器（静默）
+     * 2. 重置状态
+     * 3. 加载新视频（自动播放，恢复历史进度）
      */
     private fun onEpisodeChanged() {
-        // 保存当前进度
+        // 标记正在切换集数，忽略旧视频的播放状态回调
+        _isChangingEpisode = true
+        
+        // 保存当前进度（静默处理）
         viewModelScope.launch {
             saveCurrentProgress(force = true)
         }
         
-        // 重置播放状态（保持 isPlaying = true，切换后自动播放）
+        // 重置播放状态
         _uiState.update { 
             it.copy(
                 currentPosition = 0,
@@ -526,7 +602,7 @@ class PlayerViewModel(
                 hasReportedComplete = false
             )
         }
-        // 加载新视频（会自动播放）
+        // 加载新视频（会自动播放，并恢复历史进度）
         loadVideoSource()
     }
     
