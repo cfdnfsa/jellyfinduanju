@@ -1,0 +1,140 @@
+package com.wjp.jellyfinduanju.data.settings
+
+import android.content.Context
+import android.os.Environment
+import com.tencent.mmkv.MMKV
+import java.io.File
+
+/**
+ * AppSettings - 应用设置数据类
+ * 
+ * 存储所有应用设置项，通过 MMKV 持久化到本地
+ * 
+ * 使用方式：
+ * - 读取：AppSettings.imageCachePath
+ * - 修改：AppSettings.imageCachePath = "/new/path"（会自动保存）
+ * 
+ * 初始化：
+ * - 在 Application.onCreate() 中调用 AppSettings.init(context)
+ */
+object AppSettings {
+    
+    // MMKV 实例，用于持久化存储
+    private lateinit var mmkv: MMKV
+    
+    // 默认缓存目录名
+    private const val DEFAULT_IMAGE_CACHE_DIR = "image_cache"
+    private const val DEFAULT_VIDEO_CACHE_DIR = "video_cache"
+    
+    // ==================== 默认值 ====================
+    
+    private lateinit var defaultImageCachePath: String
+    private lateinit var defaultVideoCachePath: String
+    
+    // ==================== 初始化 ====================
+    
+    /**
+     * 初始化 AppSettings
+     * 
+     * 必须在 Application.onCreate() 中调用
+     * 
+     * @param context 应用上下文
+     */
+    fun init(context: Context) {
+        // 初始化 MMKV（使用单独的实例存储设置）
+        mmkv = MMKV.mmkvWithID("app_settings")
+        
+        // 设置默认缓存路径（应用私有目录）
+        val cacheDir = context.getExternalFilesDir(null) 
+            ?: context.filesDir
+        
+        defaultImageCachePath = File(cacheDir, DEFAULT_IMAGE_CACHE_DIR).absolutePath
+        defaultVideoCachePath = File(cacheDir, DEFAULT_VIDEO_CACHE_DIR).absolutePath
+        
+        // 确保默认目录存在
+        ensureDirectoryExists(imageCachePath)
+        ensureDirectoryExists(videoCachePath)
+    }
+    
+    // ==================== 缓存设置 ====================
+    
+    /**
+     * 图片缓存路径
+     * 
+     * 读取时：返回保存的路径，如果没有则返回默认路径
+     * 写入时：自动保存到 MMKV
+     */
+    var imageCachePath: String
+        get() = mmkv.decodeString(Keys.IMAGE_CACHE_PATH) ?: defaultImageCachePath
+        set(value) {
+            mmkv.encode(Keys.IMAGE_CACHE_PATH, value)
+        }
+    
+    /**
+     * 视频缓存路径
+     */
+    var videoCachePath: String
+        get() = mmkv.decodeString(Keys.VIDEO_CACHE_PATH) ?: defaultVideoCachePath
+        set(value) {
+            mmkv.encode(Keys.VIDEO_CACHE_PATH, value)
+        }
+    
+    /**
+     * 最大并发下载数量
+     * 默认为 1，表示同时只下载一个任务
+     */
+    var maxConcurrentDownloads: Int
+        get() = mmkv.decodeInt(Keys.MAX_CONCURRENT_DOWNLOADS, 1)
+        set(value) {
+            mmkv.encode(Keys.MAX_CONCURRENT_DOWNLOADS, value.coerceIn(1, 5))
+        }
+    
+    // ==================== MMKV 键名 ====================
+    private object Keys {
+        const val IMAGE_CACHE_PATH = "image_cache_path"
+        const val VIDEO_CACHE_PATH = "video_cache_path"
+        const val MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads"
+    }
+    
+    /**
+     * 获取默认图片缓存路径
+     */
+    fun getDefaultImageCachePath(): String = defaultImageCachePath
+    
+    /**
+     * 获取默认视频缓存路径
+     */
+    fun getDefaultVideoCachePath(): String = defaultVideoCachePath
+    
+    /**
+     * 重置缓存路径为默认值
+     */
+    fun resetCachePathsToDefault() {
+        mmkv.removeValueForKey(Keys.IMAGE_CACHE_PATH)
+        mmkv.removeValueForKey(Keys.VIDEO_CACHE_PATH)
+    }
+    
+    // ==================== 辅助方法 ====================
+    
+    /**
+     * 确保目录存在
+     */
+    private fun ensureDirectoryExists(path: String) {
+        val dir = File(path)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+    }
+    
+    /**
+     * 检查路径是否为默认路径
+     */
+    fun isDefaultImageCachePath(): Boolean {
+        return imageCachePath == defaultImageCachePath
+    }
+    
+    fun isDefaultVideoCachePath(): Boolean {
+        return videoCachePath == defaultVideoCachePath
+    }
+}
+

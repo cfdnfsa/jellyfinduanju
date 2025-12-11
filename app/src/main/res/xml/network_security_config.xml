@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    网络安全配置文件
+    
+    Android 9 (API 28) 起，默认禁止明文 HTTP 流量
+    由于 Jellyfin 服务器可能使用 HTTP，需要允许明文流量
+    
+    生产环境建议使用 HTTPS
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
+
