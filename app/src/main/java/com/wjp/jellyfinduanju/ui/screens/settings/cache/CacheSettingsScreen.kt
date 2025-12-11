@@ -1,5 +1,6 @@
 package com.wjp.jellyfinduanju.ui.screens.settings.cache
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +19,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -34,6 +38,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -44,10 +49,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.wjp.jellyfinduanju.ui.theme.JellyfinDuanjuTheme
 
 /**
  * CacheSettingsScreen - 缓存设置页面（有状态组件）
@@ -90,6 +93,10 @@ fun CacheSettingsScreen(
         onClearCacheClick = { viewModel.showClearCacheDialog() },
         onClearCacheConfirm = { viewModel.confirmClearCache() },
         onClearCacheCancel = { viewModel.hideClearCacheDialog() },
+        onClearEpisodeDataClick = { viewModel.showClearDataDialog(ClearDataType.EPISODE_DATA) },
+        onClearSeriesDataClick = { viewModel.showClearDataDialog(ClearDataType.SERIES_DATA) },
+        onClearDataConfirm = { viewModel.confirmClearData() },
+        onClearDataCancel = { viewModel.hideClearDataDialog() },
         onEditPathChange = { viewModel.updateEditingPath(it) },
         onEditPathConfirm = { viewModel.confirmEditPath() },
         onEditPathCancel = { viewModel.hideEditPathDialog() },
@@ -135,6 +142,10 @@ private fun CacheSettingsContent(
     onClearCacheClick: () -> Unit,
     onClearCacheConfirm: () -> Unit,
     onClearCacheCancel: () -> Unit,
+    onClearEpisodeDataClick: () -> Unit,
+    onClearSeriesDataClick: () -> Unit,
+    onClearDataConfirm: () -> Unit,
+    onClearDataCancel: () -> Unit,
     onEditPathChange: (String) -> Unit,
     onEditPathConfirm: () -> Unit,
     onEditPathCancel: () -> Unit,
@@ -163,21 +174,31 @@ private fun CacheSettingsContent(
     Scaffold(
         // 顶部应用栏
         topBar = {
-            TopAppBar(
-                title = { Text("缓存设置") },
-                // 左侧返回按钮
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
-                }
-            )
+            Column(
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.surface)
+                    .statusBarsPadding()
+            ) {
+                TopAppBar(
+                    title = { Text("缓存设置") },
+                    // 左侧返回按钮
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                )
+            }
         },
         // Snackbar 宿主，用于显示消息
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.surface
     ) { paddingValues ->
         // 主内容区域
         Column(
@@ -294,10 +315,10 @@ private fun CacheSettingsContent(
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // ==================== 操作卡片 ====================
+            // ==================== 文件缓存操作卡片 ====================
             
             Text(
-                text = "操作",
+                text = "文件缓存",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
@@ -309,26 +330,23 @@ private fun CacheSettingsContent(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             ) {
-                // 清除缓存按钮
+                // 清除所有缓存按钮
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(
-                            enabled = !uiState.isClearing,  // 清除中时禁用点击
+                            enabled = !uiState.isClearing,
                             onClick = onClearCacheClick
                         )
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 根据状态显示不同的图标
                     if (uiState.isClearing) {
-                        // 清除中显示加载指示器
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp
                         )
                     } else {
-                        // 正常状态显示删除图标
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = null,
@@ -337,7 +355,6 @@ private fun CacheSettingsContent(
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
-                        // 按钮文字
                         Text(
                             text = if (uiState.isClearing) "正在清除..." else "清除所有缓存",
                             style = MaterialTheme.typography.bodyLarge,
@@ -348,12 +365,128 @@ private fun CacheSettingsContent(
                                 MaterialTheme.colorScheme.error
                             }
                         )
-                        // 描述文字
                         Text(
-                            text = "删除所有图片和视频缓存文件",
+                            text = "删除所有缓存（图片、视频、下载任务、剧集数据）",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // ==================== 数据缓存操作卡片 ====================
+            
+            Text(
+                text = "数据缓存",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+            )
+            
+            // 提示信息
+            if (uiState.cachedSeriesCount > 0) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Storage,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "有 ${uiState.cachedSeriesCount} 个剧集有视频缓存，其数据不会被清除",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                }
+            }
+            
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column {
+                    // 清除剧集详情缓存
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                enabled = !uiState.isClearing,
+                                onClick = onClearEpisodeDataClick
+                            )
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.List,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = "清除剧集详情缓存",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "清除季和集的本地数据",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                    
+                    // 清除剧集列表缓存
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                enabled = !uiState.isClearing,
+                                onClick = onClearSeriesDataClick
+                            )
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = "清除剧集列表缓存",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "清除列表数据，需要重新同步",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -368,9 +501,9 @@ private fun CacheSettingsContent(
     if (uiState.showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = onClearCacheCancel,  // 点击外部区域时触发取消
-            title = { Text("清除缓存") },
+            title = { Text("清除所有缓存") },
             text = { 
-                Text("确定要清除所有缓存吗？\n\n这将删除所有图片和视频缓存文件，共 ${uiState.totalCacheSize}。") 
+                Text("确定要清除所有缓存吗？\n\n这将删除：\n• 图片和视频缓存文件（${uiState.totalCacheSize}）\n• 下载任务\n• 剧集列表和详情数据\n\n清除后需要重新同步数据。") 
             },
             confirmButton = {
                 TextButton(onClick = onClearCacheConfirm) {
@@ -453,6 +586,39 @@ private fun CacheSettingsContent(
             }
         )
     }
+    
+    // 清除数据确认对话框
+    if (uiState.showClearDataDialog) {
+        val (title, message) = when (uiState.clearDataType) {
+            ClearDataType.EPISODE_DATA -> "清除剧集详情缓存" to 
+                if (uiState.cachedSeriesCount > 0)
+                    "确定要清除剧集详情缓存吗？\n\n有 ${uiState.cachedSeriesCount} 个剧集有视频缓存，其详情数据将被保留。"
+                else
+                    "确定要清除所有剧集详情缓存吗？"
+            ClearDataType.SERIES_DATA -> "清除剧集列表缓存" to 
+                if (uiState.cachedSeriesCount > 0)
+                    "确定要清除剧集列表缓存吗？\n\n有 ${uiState.cachedSeriesCount} 个剧集有视频缓存，其数据将被保留。\n清除后需要重新同步列表。"
+                else
+                    "确定要清除所有剧集列表缓存吗？\n\n清除后需要重新同步列表。"
+            else -> "" to ""
+        }
+        
+        AlertDialog(
+            onDismissRequest = onClearDataCancel,
+            title = { Text(title) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = onClearDataConfirm) {
+                    Text("确定", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onClearDataCancel) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 /**
@@ -522,47 +688,5 @@ private fun CachePathItem(
                 overflow = TextOverflow.Ellipsis  // 路径过长时显示省略号
             )
         }
-    }
-}
-
-// ==================== 预览 ====================
-
-/**
- * 缓存设置页面预览
- * 
- * 在 Android Studio 的 Preview 面板中显示页面效果
- * 使用模拟数据，不依赖 ViewModel
- */
-@Preview(
-    name = "缓存设置页面",
-    showBackground = true,
-    showSystemUi = true
-)
-@Composable
-private fun PreviewCacheSettingsScreen() {
-    JellyfinDuanjuTheme(darkTheme = true) {
-        CacheSettingsContent(
-            uiState = CacheSettingsUiState(
-                imageCachePath = "/storage/emulated/0/Android/data/com.wjp.jellyfinduanju/files/image_cache",
-                videoCachePath = "/storage/emulated/0/Android/data/com.wjp.jellyfinduanju/files/video_cache",
-                imageCacheSize = "128.5 MB",
-                videoCacheSize = "1.2 GB",
-                totalCacheSize = "1.33 GB",
-                imageFileCount = 256,
-                videoFileCount = 12
-            ),
-            onBack = {},
-            onImagePathClick = {},
-            onVideoPathClick = {},
-            onClearCacheClick = {},
-            onClearCacheConfirm = {},
-            onClearCacheCancel = {},
-            onEditPathChange = {},
-            onEditPathConfirm = {},
-            onEditPathCancel = {},
-            onPathChangeConfirm = {},
-            onPathChangeCancel = {},
-            onMessageShown = {}
-        )
     }
 }

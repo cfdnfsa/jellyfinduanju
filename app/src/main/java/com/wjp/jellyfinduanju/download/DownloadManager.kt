@@ -267,6 +267,26 @@ object DownloadManager {
     }
     
     /**
+     * 取消所有下载任务
+     */
+    fun cancelAllDownloads() {
+        // 取消所有下载 Job
+        downloadJobs.values.forEach { it.cancel() }
+        downloadJobs.clear()
+        
+        // 删除所有已下载的文件
+        downloadDataStore.getAllTasks().forEach { task ->
+            task.localPath?.let { path ->
+                File(path).delete()
+            }
+        }
+        
+        scope.launch {
+            updateDownloadingTasksFlow()
+        }
+    }
+    
+    /**
      * 删除已完成的下载（包括文件）
      */
     fun deleteCompletedDownload(taskId: String) {
