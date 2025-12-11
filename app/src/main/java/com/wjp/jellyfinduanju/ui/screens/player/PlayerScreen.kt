@@ -358,11 +358,18 @@ fun PlayerScreen(
                         }
                     },
                     onPlaybackStateChanged = { isPlaying ->
-                        // 只在非 seeking/切换集数 状态下同步播放状态
-                        // 避免 ExoPlayer 的 buffering 状态覆盖用户意图
                         val state = viewModel.uiState.value
-                        if (isCurrentPage && !state.isSeeking && !state.isChangingEpisode) {
-                            viewModel.setPlaying(isPlaying)
+                        if (isCurrentPage) {
+                            if (state.isChangingEpisode) {
+                                // 切换集数期间：只响应 isPlaying = true（表示真正开始播放了）
+                                if (isPlaying) {
+                                    viewModel.onVideoActuallyStarted()
+                                }
+                                // 忽略 isPlaying = false（buffering 状态）
+                            } else if (!state.isSeeking) {
+                                // 正常状态：同步播放状态
+                                viewModel.setPlaying(isPlaying)
+                            }
                         }
                     },
                     onSeekComplete = {

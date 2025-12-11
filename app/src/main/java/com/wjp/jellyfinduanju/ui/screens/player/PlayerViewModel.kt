@@ -430,6 +430,21 @@ class PlayerViewModel(
     }
     
     /**
+     * 视频真正开始播放（ExoPlayer 回调 isPlaying = true）
+     * 
+     * 在切换集数期间，只有收到这个回调才表示新视频真正开始播放了
+     * 此时清除 isChangingEpisode 标记
+     */
+    fun onVideoActuallyStarted() {
+        _uiState.update { 
+            it.copy(
+                isChangingEpisode = false,
+                isPlaying = true
+            ) 
+        }
+    }
+    
+    /**
      * 开始拖动/滑动
      * 
      * 设置 isSeeking = true，暂停播放
@@ -561,11 +576,9 @@ class PlayerViewModel(
                         isVideoLoading = false,
                         isLocalVideo = true,
                         isPlaying = true
+                        // 注意：不在这里设置 isChangingEpisode = false
+                        // 等待 ExoPlayer 真正开始播放后再清除（在 onPlaybackStateChanged 中处理）
                     )
-                }
-                
-                if (savedPosition <= 0) {
-                    _uiState.update { it.copy(isChangingEpisode = false) }
                 }
                 
                 try {
@@ -583,11 +596,9 @@ class PlayerViewModel(
                         isVideoLoading = false,
                         isLocalVideo = false,
                         isPlaying = true
+                        // 注意：不在这里设置 isChangingEpisode = false
+                        // 等待 ExoPlayer 真正开始播放后再清除（在 onPlaybackStateChanged 中处理）
                     )
-                }
-                
-                if (savedPosition <= 0) {
-                    _uiState.update { it.copy(isChangingEpisode = false) }
                 }
                 
                 try {
