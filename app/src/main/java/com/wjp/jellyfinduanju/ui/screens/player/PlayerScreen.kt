@@ -243,8 +243,8 @@ fun PlayerScreen(
                     },
                     onPlaybackStateChanged = { isPlaying ->
                         // 只在非 seeking/切换集数 状态下同步播放器状态
-                        // 避免 seek 或切换时的 buffering 覆盖用户意图
-                        if (isCurrentPage && !viewModel.isSeeking() && !viewModel.isChangingEpisode()) {
+                        val state = viewModel.uiState.value
+                        if (isCurrentPage && !state.isSeeking && !state.isChangingEpisode) {
                             viewModel.setPlaying(isPlaying)
                         }
                     },
@@ -370,7 +370,6 @@ private fun PlayerContent(
     
     // 水平滑动进度调节状态
     var isDragging by remember { mutableStateOf(false) }
-    var dragStartPosition by remember { mutableStateOf(0L) }
     var dragTargetPosition by remember { mutableStateOf(0L) }
     
     Box(
@@ -397,9 +396,7 @@ private fun PlayerContent(
                 detectHorizontalDragGestures(
                     onDragStart = {
                         isDragging = true
-                        dragStartPosition = uiState.currentPosition
                         dragTargetPosition = uiState.currentPosition
-                        // 开始滑动时暂停
                         onSeekStart()
                     },
                     onDragEnd = {

@@ -36,8 +36,7 @@ class PlayerViewModel(
     private val initialEpisodeId: String
 ) : ViewModel() {
     
-    // ==================== UI 状态 ====================
-    
+    // UI 状态
     private val _uiState = MutableStateFlow(PlayerUiState(series = series))
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
     
@@ -145,7 +144,7 @@ class PlayerViewModel(
      * 切换到指定集
      */
     fun switchToEpisode(index: Int) {
-        if (index in 0 until _uiState.value.allEpisodes.size && index != _uiState.value.currentEpisodeIndex) {
+        if (index in 0 until uiState.value.allEpisodes.size && index != uiState.value.currentEpisodeIndex) {
             _uiState.update { it.copy(currentEpisodeIndex = index) }
             onEpisodeChanged()
         }
@@ -155,7 +154,7 @@ class PlayerViewModel(
      * 切换到指定集（通过 episodeId）
      */
     fun switchToEpisode(episodeId: String) {
-        val index = _uiState.value.allEpisodes.indexOfFirst { it.id == episodeId }
+        val index = uiState.value.allEpisodes.indexOfFirst { it.id == episodeId }
         if (index >= 0) {
             switchToEpisode(index)
         }
@@ -188,7 +187,7 @@ class PlayerViewModel(
      * 从 VideoPlayer 回调，更新 UI 状态
      */
     fun updateProgress(currentPosition: Long, duration: Long) {
-        val previousPosition = _uiState.value.currentPosition
+        val previousPosition = uiState.value.currentPosition
         
         _uiState.update { 
             it.copy(
@@ -200,7 +199,7 @@ class PlayerViewModel(
         // 检测视频播放完成（进度 >= 95%）
         if (duration > 0 && currentPosition > 0) {
             val progress = currentPosition.toFloat() / duration
-            if (progress >= 0.95f && !_uiState.value.hasReportedComplete) {
+            if (progress >= 0.95f && !uiState.value.hasReportedComplete) {
                 onVideoCompleted()
             }
         }
@@ -210,7 +209,7 @@ class PlayerViewModel(
      * 视频播放完成处理（由进度检测触发）
      */
     private fun onVideoCompleted() {
-        val episode = _uiState.value.currentEpisode ?: return
+        val episode = uiState.value.currentEpisode ?: return
         
         _uiState.update { it.copy(hasReportedComplete = true) }
         
@@ -221,7 +220,7 @@ class PlayerViewModel(
             // 上报播放停止
             detailRepository.reportPlaybackStopped(
                 episodeId = episode.id,
-                positionTicks = _uiState.value.duration * 10_000  // 转换为 ticks
+                positionTicks = uiState.value.duration * 10_000  // 转换为 ticks
             )
         }
     }
@@ -231,8 +230,8 @@ class PlayerViewModel(
      * 自动播放下一集，如果是最后一集则停止
      */
     fun onVideoEnded() {
-        val currentIndex = _uiState.value.currentEpisodeIndex
-        val totalEpisodes = _uiState.value.allEpisodes.size
+        val currentIndex = uiState.value.currentEpisodeIndex
+        val totalEpisodes = uiState.value.allEpisodes.size
         
         // 如果不是最后一集，自动播放下一集
         if (currentIndex < totalEpisodes - 1) {
@@ -255,14 +254,14 @@ class PlayerViewModel(
      * 是否有下一集
      */
     fun hasNextEpisode(): Boolean {
-        return _uiState.value.currentEpisodeIndex < _uiState.value.allEpisodes.size - 1
+        return uiState.value.currentEpisodeIndex < uiState.value.allEpisodes.size - 1
     }
     
     /**
      * 是否有上一集
      */
     fun hasPreviousEpisode(): Boolean {
-        return _uiState.value.currentEpisodeIndex > 0
+        return uiState.value.currentEpisodeIndex > 0
     }
     
     /**
@@ -270,7 +269,7 @@ class PlayerViewModel(
      */
     fun playNextEpisode() {
         if (hasNextEpisode()) {
-            switchToEpisode(_uiState.value.currentEpisodeIndex + 1)
+            switchToEpisode(uiState.value.currentEpisodeIndex + 1)
         }
     }
     
@@ -279,7 +278,7 @@ class PlayerViewModel(
      */
     fun playPreviousEpisode() {
         if (hasPreviousEpisode()) {
-            switchToEpisode(_uiState.value.currentEpisodeIndex - 1)
+            switchToEpisode(uiState.value.currentEpisodeIndex - 1)
         }
     }
     
@@ -290,7 +289,7 @@ class PlayerViewModel(
      */
     private suspend fun saveCurrentProgress(force: Boolean = false) {
         try {
-            val state = _uiState.value
+            val state = uiState.value
             val episode = state.currentEpisode ?: return
             
             // 如果没有有效进度，不保存
@@ -334,7 +333,7 @@ class PlayerViewModel(
     private fun reportProgressToServer() {
         viewModelScope.launch {
             try {
-                val state = _uiState.value
+                val state = uiState.value
                 val episode = state.currentEpisode ?: return@launch
                 if (state.currentPosition <= 0) return@launch
                 
@@ -376,58 +375,32 @@ class PlayerViewModel(
      * 清除跳转位置（seek 完成后调用）
      */
     fun clearSeekPosition() {
-        _isSeeking = false  // seek 完成，可以响应播放状态回调了
-        _isChangingEpisode = false  // 切换集数也完成了
-        _uiState.update { it.copy(seekToPosition = null) }
+        _uiState.update { it.copy(seekToPosition = null, isSeeking = false, isChangingEpisode = false) }
     }
     
-    // 是否正在 seeking（用于忽略 seek 期间的播放状态回调）
-    private var _isSeeking = false
-    
-    // 是否正在切换集数（用于忽略切换期间旧视频的播放状态回调）
-    private var _isChangingEpisode = false
-    
     /**
-     * 是否正在 seeking
-     */
-    fun isSeeking(): Boolean = _isSeeking
-    
-    /**
-     * 是否正在切换集数
-     */
-    fun isChangingEpisode(): Boolean = _isChangingEpisode
-    
-    /**
-     * 开始拖动进度条（暂停播放）
+     * 开始拖动/滑动（暂停播放）
      */
     fun onSeekStart() {
-        if (!_isSeeking) {
-            _isSeeking = true
-            _uiState.update { it.copy(isPlaying = false) }
-        }
+        _uiState.update { it.copy(isSeeking = true, isPlaying = false) }
     }
     
     /**
-     * 结束拖动进度条（恢复播放）
-     * 注意：_isSeeking 在 clearSeekPosition 中设为 false（seek 完成后）
-     * 
-     * @param targetPosition 如果提供，则跳转到该位置并恢复播放
+     * 结束拖动/滑动（恢复播放）
+     * @param targetPosition 跳转目标位置，null 则不跳转
      */
     fun onSeekEnd(targetPosition: Long? = null) {
-        // 不在这里设置 _isSeeking = false，等 seek 完成后再设置
         if (targetPosition != null) {
             _uiState.update { 
                 it.copy(
                     seekToPosition = targetPosition,
                     currentPosition = targetPosition,
-                    isPlaying = true  // 恢复播放
+                    isPlaying = true
                 ) 
             }
-            // 立即汇报新进度到服务器（静默）
             reportProgressToServer()
         } else {
-            _isSeeking = false  // 没有目标位置，直接结束
-            _uiState.update { it.copy(isPlaying = true) }
+            _uiState.update { it.copy(isSeeking = false, isPlaying = true) }
         }
     }
     
@@ -510,7 +483,7 @@ class PlayerViewModel(
      * 同时恢复上次播放位置（历史进度）
      */
     fun loadVideoSource() {
-        val episode = _uiState.value.currentEpisode ?: return
+        val episode = uiState.value.currentEpisode ?: return
         
         viewModelScope.launch {
             _uiState.update { it.copy(isVideoLoading = true, videoError = null, hasReportedComplete = false) }
@@ -533,9 +506,9 @@ class PlayerViewModel(
                     )
                 }
                 
-                // 如果没有历史进度，直接清除切换标志（不需要等 seek 完成）
+                // 如果没有历史进度，直接清除切换标志
                 if (savedPosition <= 0) {
-                    _isChangingEpisode = false
+                    _uiState.update { it.copy(isChangingEpisode = false) }
                 }
                 
                 // 上报播放开始（静默）
@@ -559,7 +532,7 @@ class PlayerViewModel(
                 
                 // 如果没有历史进度，直接清除切换标志
                 if (savedPosition <= 0) {
-                    _isChangingEpisode = false
+                    _uiState.update { it.copy(isChangingEpisode = false) }
                 }
                 
                 // 上报播放开始（静默）
@@ -567,11 +540,11 @@ class PlayerViewModel(
                     detailRepository.reportPlaybackStart(episode.id, episode.playbackPositionTicks)
                 } catch (_: Exception) { }
             } else {
-                _isChangingEpisode = false  // 加载失败也要清除
                 _uiState.update { 
                     it.copy(
                         isVideoLoading = false,
-                        videoError = "获取视频源失败"
+                        videoError = "获取视频源失败",
+                        isChangingEpisode = false
                     )
                 }
             }
@@ -579,27 +552,22 @@ class PlayerViewModel(
     }
     
     /**
-     * 当切换剧集后重新加载视频源
-     * 1. 保存当前进度到服务器（静默）
-     * 2. 重置状态
-     * 3. 加载新视频（自动播放，恢复历史进度）
+     * 切换剧集后重新加载视频源
      */
     private fun onEpisodeChanged() {
-        // 标记正在切换集数，忽略旧视频的播放状态回调
-        _isChangingEpisode = true
-        
         // 保存当前进度（静默处理）
         viewModelScope.launch {
             saveCurrentProgress(force = true)
         }
         
-        // 重置播放状态
+        // 重置状态并标记切换中
         _uiState.update { 
             it.copy(
                 currentPosition = 0,
                 duration = 0,
                 currentVideoUri = null,
-                hasReportedComplete = false
+                hasReportedComplete = false,
+                isChangingEpisode = true
             )
         }
         // 加载新视频（会自动播放，并恢复历史进度）
@@ -650,7 +618,11 @@ data class PlayerUiState(
     val isFullscreen: Boolean = false,
     
     // 播放完成标记（防止重复上报）
-    val hasReportedComplete: Boolean = false
+    val hasReportedComplete: Boolean = false,
+    
+    // 状态标记（用于忽略 seek/切换期间的播放状态回调）
+    val isSeeking: Boolean = false,
+    val isChangingEpisode: Boolean = false
 ) {
     /**
      * 当前播放的剧集
