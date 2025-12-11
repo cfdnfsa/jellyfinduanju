@@ -81,6 +81,33 @@ class ListViewModel(
     }
     
     /**
+     * 更新筛选标签
+     */
+    fun updateFilterTag(tag: String) {
+        _uiState.update { it.copy(selectedFilterTag = tag) }
+        applySearchFilter()
+    }
+    
+    /**
+     * 获取所有可用的筛选标签
+     */
+    fun getAllFilterTags(): List<String> {
+        val systemTags = listOf("全部", "已缓存", "未缓存")
+        
+        // 从剧集列表中提取云端文件夹标签（去重）
+        val allSeries = seriesRepository.getLocalSeriesList()
+        val cloudFolderTags = allSeries
+            .mapNotNull { it.cloudFolderTag }
+            .distinct()
+            .sorted()
+        
+        // 获取自定义标签
+        val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
+        
+        return systemTags + cloudFolderTags + customTags
+    }
+    
+    /**
      * 应用搜索筛选
      * 
      * 根据搜索关键词筛选剧集列表
@@ -88,11 +115,26 @@ class ListViewModel(
      */
     private fun applySearchFilter() {
         val query = _uiState.value.searchQuery.trim()
+        val selectedTag = _uiState.value.selectedFilterTag
         
+        // 先应用标签筛选
+        val tagFilteredList = when (selectedTag) {
+            "全部" -> allSeriesList
+            "已缓存" -> allSeriesList.filter { it.isVideoCached }
+            "未缓存" -> allSeriesList.filter { !it.isVideoCached }
+            else -> {
+                // 检查是否匹配云端文件夹标签或自定义标签
+                allSeriesList.filter { series ->
+                    series.cloudFolderTag == selectedTag || selectedTag in series.customTags
+                }
+            }
+        }
+        
+        // 再应用搜索筛选
         val filteredList = if (query.isEmpty()) {
-            allSeriesList
+            tagFilteredList
         } else {
-            allSeriesList.filter { series ->
+            tagFilteredList.filter { series ->
                 // 模糊匹配剧集名称（不区分大小写）
                 series.name.contains(query, ignoreCase = true)
             }
@@ -407,7 +449,9 @@ data class ListUiState(
     /** 当前选中的剧集（用于显示菜单） */
     val selectedSeries: SeriesLocalData? = null,
     /** 当前显示的对话框类型 */
-    val dialogType: DialogType? = null
+    val dialogType: DialogType? = null,
+    /** 当前选中的筛选标签 */
+    val selectedFilterTag: String = "全部"
 )
 
 /**

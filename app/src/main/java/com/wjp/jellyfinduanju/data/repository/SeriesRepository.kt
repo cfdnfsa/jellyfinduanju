@@ -96,12 +96,9 @@ class SeriesRepository(
             
             if (viewsResponse.isSuccessful) {
                 val views = viewsResponse.body()?.items ?: emptyList()
-                android.util.Log.d("SeriesRepository", "获取到 ${views.size} 个媒体库")
                 
                 // 为每个媒体库获取其中的 Series
                 for (view in views) {
-                    android.util.Log.d("SeriesRepository", "媒体库: id=${view.id}, name=${view.name}, type=${view.type}")
-                    
                     // 获取该媒体库下的所有 Series
                     val libraryResponse = api.getUserItems(
                         authorization = authHeader,
@@ -116,14 +113,12 @@ class SeriesRepository(
                     
                     if (libraryResponse.isSuccessful) {
                         val items = libraryResponse.body()?.items ?: emptyList()
-                        android.util.Log.d("SeriesRepository", "媒体库 ${view.name} 下有 ${items.size} 个剧集")
                         items.forEach { item ->
                             allServerItems.add(item to view.name)
                         }
                     }
                 }
             } else {
-                android.util.Log.e("SeriesRepository", "获取媒体库失败: ${viewsResponse.code()}, 降级为获取全部")
                 // 降级：直接获取所有 Series（不带媒体库信息）
                 val fallbackResponse = api.getUserItems(
                     authorization = authHeader,

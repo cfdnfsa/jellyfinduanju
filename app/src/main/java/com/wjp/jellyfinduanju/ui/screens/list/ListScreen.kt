@@ -2,10 +2,10 @@ package com.wjp.jellyfinduanju.ui.screens.list
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -26,11 +27,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayCircle
@@ -40,25 +40,25 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -74,15 +74,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
-import com.wjp.jellyfinduanju.ui.theme.JellyfinDuanjuTheme
 
 /**
  * ListScreen - 剧集列表页面
@@ -107,6 +106,7 @@ fun ListScreen(
     
     ListScreenContent(
         uiState = uiState,
+        allFilterTags = viewModel.getAllFilterTags(),
         onRefreshClick = { viewModel.refreshSeriesList() },
         onSeriesClick = onSeriesClick,
         onSeriesLongClick = { series -> viewModel.showSeriesMenu(series) },
@@ -120,6 +120,7 @@ fun ListScreen(
         onConfirmDeleteAllCache = { viewModel.confirmDeleteAllCache() },
         onToggleTag = { tag, selected -> viewModel.toggleSeriesTag(tag, selected) },
         onClearTags = { viewModel.clearSeriesTags() },
+        onFilterTagChange = { viewModel.updateFilterTag(it) },
         onDismissDialog = { viewModel.hideDialog() },
         onErrorShown = { viewModel.clearError() },
         onSearchQueryChange = { viewModel.updateSearchQuery(it) },
@@ -137,6 +138,7 @@ fun ListScreen(
 @Composable
 private fun ListScreenContent(
     uiState: ListUiState,
+    allFilterTags: List<String>,
     onRefreshClick: () -> Unit,
     onSeriesClick: (SeriesLocalData) -> Unit,
     onSeriesLongClick: (SeriesLocalData) -> Unit,
@@ -150,6 +152,7 @@ private fun ListScreenContent(
     onConfirmDeleteAllCache: () -> Unit,
     onToggleTag: (String, Boolean) -> Unit,
     onClearTags: () -> Unit,
+    onFilterTagChange: (String) -> Unit,
     onDismissDialog: () -> Unit,
     onErrorShown: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -263,19 +266,29 @@ private fun ListScreenContent(
                 }
                 // 显示列表
                 else -> {
-                    SeriesGrid(
-                        seriesList = uiState.seriesList,
-                        selectedSeries = uiState.selectedSeries,
-                        onSeriesClick = onSeriesClick,
-                        onSeriesLongClick = onSeriesLongClick,
-                        onDismissMenu = onDismissMenu,
-                        onMarkAsWatched = onMarkAsWatched,
-                        onMarkAsUnwatched = onMarkAsUnwatched,
-                        onCacheAll = onCacheAll,
-                        onDeleteAllCache = onDeleteAllCache,
-                        onSetTag = onSetTag,
-                        getImageUrl = getImageUrl
-                    )
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // 标签筛选栏
+                        TagFilterBar(
+                            allTags = allFilterTags,
+                            selectedTag = uiState.selectedFilterTag,
+                            onTagSelected = onFilterTagChange
+                        )
+                        
+                        // 剧集网格
+                        SeriesGrid(
+                            seriesList = uiState.seriesList,
+                            selectedSeries = uiState.selectedSeries,
+                            onSeriesClick = onSeriesClick,
+                            onSeriesLongClick = onSeriesLongClick,
+                            onDismissMenu = onDismissMenu,
+                            onMarkAsWatched = onMarkAsWatched,
+                            onMarkAsUnwatched = onMarkAsUnwatched,
+                            onCacheAll = onCacheAll,
+                            onDeleteAllCache = onDeleteAllCache,
+                            onSetTag = onSetTag,
+                            getImageUrl = getImageUrl
+                        )
+                    }
                 }
             }
         }
@@ -445,6 +458,92 @@ private fun ListScreenContent(
                     }
                 )
             }
+        }
+    }
+}
+
+/**
+ * TagFilterBar - 标签筛选栏
+ * 
+ * 横向滚动显示所有可用标签
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TagFilterBar(
+    allTags: List<String>,
+    selectedTag: String,
+    onTagSelected: (String) -> Unit
+) {
+    // 系统标签列表（用于判断标签类型）
+    val systemTags = listOf("全部", "已缓存", "未缓存")
+    val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
+    
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(allTags.size) { index ->
+            val tag = allTags[index]
+            val isSelected = tag == selectedTag
+            
+            // 根据标签类型设置不同颜色
+            val (containerColor, labelColor, icon) = when {
+                tag == "全部" -> Triple(
+                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    null
+                )
+                tag == "已缓存" -> Triple(
+                    if (isSelected) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icons.Default.Download
+                )
+                tag == "未缓存" -> Triple(
+                    if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icons.Default.CloudQueue
+                )
+                tag in customTags -> Triple(
+                    if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icons.Default.Label
+                )
+                // 其他的都是云端文件夹标签
+                else -> Triple(
+                    if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icons.Default.Folder
+                )
+            }
+            
+            FilterChip(
+                selected = isSelected,
+                onClick = { onTagSelected(tag) },
+                label = { 
+                    Text(
+                        text = tag,
+                        style = MaterialTheme.typography.labelMedium
+                    ) 
+                },
+                leadingIcon = icon?.let { iconVector ->
+                    {
+                        Icon(
+                            imageVector = iconVector,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    selectedContainerColor = containerColor,
+                    selectedLabelColor = labelColor,
+                    selectedLeadingIconColor = labelColor
+                )
+            )
         }
     }
 }
@@ -807,82 +906,3 @@ private fun EmptyContent(
         }
     }
 }
-
-// ==================== 预览 ====================
-
-@Preview(
-    name = "剧集列表页面",
-    showBackground = true,
-    showSystemUi = true
-)
-@Composable
-private fun PreviewListScreen() {
-    JellyfinDuanjuTheme(darkTheme = true) {
-        ListScreenContent(
-            uiState = ListUiState(
-                seriesList = listOf(
-                    SeriesLocalData(
-                        id = "1",
-                        name = "这是一个很长的剧集名称测试",
-                        episodeCount = 24,
-                        seasonCount = 2,
-                        played = true  // 已看完
-                    ),
-                    SeriesLocalData(
-                        id = "2",
-                        name = "短名称",
-                        episodeCount = 12,
-                        seasonCount = 1,
-                        lastWatchPositionTicks = 100000  // 正在看
-                    ),
-                    SeriesLocalData(
-                        id = "3",
-                        name = "测试剧集",
-                        episodeCount = 8,
-                        seasonCount = 1
-                        // 未开始
-                    ),
-                    SeriesLocalData(
-                        id = "4",
-                        name = "另一个剧集",
-                        episodeCount = 16,
-                        seasonCount = 2,
-                        played = true  // 已看完
-                    )
-                ),
-                isEmpty = false,
-                searchQuery = ""
-            ),
-            onRefreshClick = {},
-            onSeriesClick = {},
-            onSeriesLongClick = {},
-            onDismissMenu = {},
-            onMarkAsWatched = {},
-            onMarkAsUnwatched = {},
-            onCacheAll = {},
-            onDeleteAllCache = {},
-            onSetTag = {},
-            onConfirmCacheAll = {},
-            onConfirmDeleteAllCache = {},
-            onToggleTag = { _, _ -> },
-            onClearTags = {},
-            onDismissDialog = {},
-            onErrorShown = {},
-            onSearchQueryChange = {},
-            onClearSearch = {},
-            getImageUrl = { _, _ -> }
-        )
-    }
-}
-
-@Preview(
-    name = "空列表",
-    showBackground = true
-)
-@Composable
-private fun PreviewEmptyList() {
-    JellyfinDuanjuTheme {
-        EmptyContent(onRefreshClick = {})
-    }
-}
-
