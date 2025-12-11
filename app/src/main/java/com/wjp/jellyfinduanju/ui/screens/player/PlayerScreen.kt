@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -337,7 +338,12 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxSize(),
                 // 不预加载其他页面，只渲染当前页
                 // 这样可以避免同时创建多个 VideoPlayer
-                beyondViewportPageCount = 0
+                beyondViewportPageCount = 0,
+                // 确保滑动后页面完全对齐（snap）
+                flingBehavior = PagerDefaults.flingBehavior(
+                    state = pagerState,
+                    snapPositionalThreshold = 0.2f  // 滑动超过 20% 就切换页面
+                )
             ) { page ->
                 // 判断是否为当前显示的页面
                 val isCurrentPage = page == pagerState.currentPage
