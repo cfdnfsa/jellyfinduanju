@@ -897,21 +897,15 @@ private fun PlayerContent(
         
             // ==================== 长按倍速提示（始终显示，不受控制栏影响） ====================
             if (uiState.isLongPressSpeed) {
-                Box(
+                Text(
+                    text = "${uiState.longPressSpeedValue}x",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 60.dp, end = 16.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.7f))
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = "${uiState.longPressSpeedValue}x",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                )
             }
         }
     } else {
@@ -1151,21 +1145,15 @@ private fun PlayerContent(
                 
                 // 长按倍速提示
                 if (uiState.isLongPressSpeed) {
-                    Box(
+                    Text(
+                        text = "${uiState.longPressSpeedValue}x",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(top = 60.dp, end = 16.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.Black.copy(alpha = 0.7f))
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "${uiState.longPressSpeedValue}x",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    )
                 }
                 
                 // 中央播放按钮：竖屏模式，仅在暂停时显示
