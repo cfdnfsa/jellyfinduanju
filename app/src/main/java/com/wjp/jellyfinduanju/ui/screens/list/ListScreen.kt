@@ -270,31 +270,31 @@ private fun ListScreenContent(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            when {
-                // 加载中且列表为空
-                uiState.isLoading && uiState.seriesList.isEmpty() -> {
-                    LoadingContent()
-                }
-                // 列表为空
-                uiState.isEmpty && !uiState.isLoading -> {
-                    EmptyContent(onRefreshClick = onRefreshClick)
-                }
-                // 显示列表
-                else -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // 标签筛选栏
-                        TagFilterBar(
-                            allTags = allFilterTags,
-                            selectedTag = uiState.selectedFilterTag,
-                            onTagSelected = onFilterTagChange
-                        )
-                        
-                        // 剧集网格
+            // 标签筛选栏（始终显示）
+            TagFilterBar(
+                allTags = allFilterTags,
+                selectedTag = uiState.selectedFilterTag,
+                onTagSelected = onFilterTagChange
+            )
+            
+            // 内容区域
+            Box(modifier = Modifier.fillMaxSize()) {
+                when {
+                    // 加载中且列表为空
+                    uiState.isLoading && uiState.seriesList.isEmpty() -> {
+                        LoadingContent()
+                    }
+                    // 列表为空
+                    uiState.isEmpty && !uiState.isLoading -> {
+                        EmptyContent(onRefreshClick = onRefreshClick)
+                    }
+                    // 显示列表
+                    else -> {
                         SeriesGrid(
                             seriesList = uiState.seriesList,
                             selectedSeries = uiState.selectedSeries,
@@ -484,7 +484,7 @@ private fun ListScreenContent(
 
 /**
  * TagFilterBar - 标签筛选栏
- * 
+ *
  * 横向滚动显示所有可用标签
  */
 @Composable
@@ -493,10 +493,8 @@ private fun TagFilterBar(
     selectedTag: String,
     onTagSelected: (String) -> Unit
 ) {
-    // 系统标签列表（用于判断标签类型）
-    listOf("全部", "已缓存", "未缓存")
     val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
-    
+
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -506,7 +504,7 @@ private fun TagFilterBar(
         items(allTags.size) { index ->
             val tag = allTags[index]
             val isSelected = tag == selectedTag
-            
+
             // 根据标签类型设置不同颜色
             val (containerColor, labelColor, icon) = when {
                 tag == "全部" -> Triple(
@@ -514,15 +512,25 @@ private fun TagFilterBar(
                     if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                     null
                 )
+                tag == "正在看" -> Triple(
+                    if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icons.Default.PlayCircle
+                )
                 tag == "已缓存" -> Triple(
                     if (isSelected) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
                     if (isSelected) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
                     Icons.Default.Download
                 )
-                tag == "未缓存" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.CloudQueue
+                tag == "未看" -> Triple(
+                    if (isSelected) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icons.Default.VisibilityOff
+                )
+                tag == "已看" -> Triple(
+                    if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icons.Default.CheckCircle
                 )
                 tag in customTags -> Triple(
                     if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
@@ -531,8 +539,8 @@ private fun TagFilterBar(
                 )
                 // 其他的都是云端文件夹标签
                 else -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                     Icons.Default.Folder
                 )
             }

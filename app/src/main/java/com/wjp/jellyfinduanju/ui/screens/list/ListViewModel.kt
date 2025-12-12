@@ -114,9 +114,13 @@ class ListViewModel(
     
     /**
      * 获取所有可用的筛选标签
+     * 
+     * 标签顺序：全部、正在看、已缓存、自定义标签、文件夹、未看、已看
      */
     fun getAllFilterTags(): List<String> {
-        val systemTags = listOf("全部", "已缓存", "未缓存")
+        // 固定系统标签（不可编辑）
+        val fixedSystemTags = listOf("全部", "正在看", "已缓存")
+        val watchStatusTags = listOf("未看", "已看")
         
         // 从剧集列表中提取云端文件夹标签（去重）
         val allSeries = seriesRepository.getLocalSeriesList()
@@ -128,7 +132,8 @@ class ListViewModel(
         // 获取自定义标签
         val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
         
-        return systemTags + cloudFolderTags + customTags
+        // 按顺序组合：固定系统标签 + 自定义标签 + 文件夹 + 观看状态标签
+        return fixedSystemTags + customTags + cloudFolderTags + watchStatusTags
     }
     
     /**
@@ -145,7 +150,18 @@ class ListViewModel(
         val tagFilteredList = when (selectedTag) {
             "全部" -> allSeriesList
             "已缓存" -> allSeriesList.filter { it.isVideoCached }
-            "未缓存" -> allSeriesList.filter { !it.isVideoCached }
+            "正在看" -> allSeriesList.filter { series ->
+                // 有观看记录但未标记为已播放完成
+                series.lastWatchTime > 0 && !series.played
+            }
+            "未看" -> allSeriesList.filter { series ->
+                // 没有观看记录且未标记为已播放
+                series.lastWatchTime == 0L && !series.played
+            }
+            "已看" -> allSeriesList.filter { series ->
+                // 已标记为播放完成
+                series.played
+            }
             else -> {
                 // 检查是否匹配云端文件夹标签或自定义标签
                 allSeriesList.filter { series ->
