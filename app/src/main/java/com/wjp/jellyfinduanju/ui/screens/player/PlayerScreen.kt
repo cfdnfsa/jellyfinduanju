@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -593,67 +594,69 @@ private fun PlayerContent(
     /** 水平拖动的目标位置 */
     var dragTargetPosition by remember { mutableStateOf(0L) }
     
-    // ==================== 手势处理 ====================
+    // ==================== 手势处理 + 布局（竖屏/横屏不同布局） ====================
     
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            // 手势1：点击和长按
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    // 单击：切换控制栏显示
-                    onTap = { onToggleControls() },
-                    // 长按：开始 3x 倍速
-                    onLongPress = {
-                        isLongPressing = true
-                        onLongPressStart()
-                    },
-                    // 按压：用于检测长按结束
-                    onPress = {
-                        tryAwaitRelease()  // 等待手指抬起
-                        if (isLongPressing) {
-                            isLongPressing = false
-                            onLongPressEnd()
+    if (uiState.isFullscreen) {
+        // ==================== 横屏模式：悬浮控制栏（沉浸式） ====================
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                // 手势1：点击和长按
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        // 单击：切换控制栏显示
+                        onTap = { onToggleControls() },
+                        // 长按：开始 3x 倍速
+                        onLongPress = {
+                            isLongPressing = true
+                            onLongPressStart()
+                        },
+                        // 按压：用于检测长按结束
+                        onPress = {
+                            tryAwaitRelease()  // 等待手指抬起
+                            if (isLongPressing) {
+                                isLongPressing = false
+                                onLongPressEnd()
+                            }
                         }
-                    }
-                )
-            }
-            // 手势2：水平滑动调节进度
-            .pointerInput(uiState.duration, uiState.currentPosition) {
-                detectHorizontalDragGestures(
-                    // 开始拖动
-                    onDragStart = {
-                        isDragging = true
-                        dragTargetPosition = uiState.currentPosition
-                        onSeekStart()  // 通知暂停播放
-                    },
-                    // 结束拖动
-                    onDragEnd = {
-                        if (isDragging) {
-                            val targetPos = dragTargetPosition
-                            isDragging = false
-                            onSeekEnd(targetPos)  // 跳转并恢复播放
+                    )
+                }
+                // 手势2：水平滑动调节进度
+                .pointerInput(uiState.duration, uiState.currentPosition) {
+                    detectHorizontalDragGestures(
+                        // 开始拖动
+                        onDragStart = {
+                            isDragging = true
+                            dragTargetPosition = uiState.currentPosition
+                            onSeekStart()  // 通知暂停播放
+                        },
+                        // 结束拖动
+                        onDragEnd = {
+                            if (isDragging) {
+                                val targetPos = dragTargetPosition
+                                isDragging = false
+                                onSeekEnd(targetPos)  // 跳转并恢复播放
+                            }
+                        },
+                        // 取消拖动
+                        onDragCancel = {
+                            if (isDragging) {
+                                isDragging = false
+                                onSeekEnd(null)  // 不跳转，只恢复播放
+                            }
+                        },
+                        // 拖动中
+                        onHorizontalDrag = { _, dragAmount ->
+                            if (uiState.duration > 0) {
+                                // 每滑动 1px 调整 100ms 进度
+                                val seekAmount = (dragAmount * 100).toLong()
+                                dragTargetPosition = (dragTargetPosition + seekAmount)
+                                    .coerceIn(0, uiState.duration)
+                            }
                         }
-                    },
-                    // 取消拖动
-                    onDragCancel = {
-                        if (isDragging) {
-                            isDragging = false
-                            onSeekEnd(null)  // 不跳转，只恢复播放
-                        }
-                    },
-                    // 拖动中
-                    onHorizontalDrag = { _, dragAmount ->
-                        if (uiState.duration > 0) {
-                            // 每滑动 1px 调整 100ms 进度
-                            val seekAmount = (dragAmount * 100).toLong()
-                            dragTargetPosition = (dragTargetPosition + seekAmount)
-                                .coerceIn(0, uiState.duration)
-                        }
-                    }
-                )
-            }
-    ) {
+                    )
+                }
+        ) {
         // ==================== 视频内容 ====================
         
         // 只有当前页面才渲染视频播放器
@@ -893,23 +896,295 @@ private fun PlayerContent(
             }
         }
         
-        // ==================== 长按倍速提示（始终显示，不受控制栏影响） ====================
-        if (uiState.isLongPressSpeed) {
+            // ==================== 长按倍速提示（始终显示，不受控制栏影响） ====================
+            if (uiState.isLongPressSpeed) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 80.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "${uiState.longPressSpeedValue}x 快进中",
+                        color = Color(0xFFFF6B00),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    } else {
+        // ==================== 竖屏模式：固定底部控制区（抖音风格） ====================
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                // 手势1：点击和长按
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        // 单击：直接暂停/播放
+                        onTap = { onToggleControls() },
+                        // 长按：开始 3x 倍速
+                        onLongPress = {
+                            isLongPressing = true
+                            onLongPressStart()
+                        },
+                        // 按压：用于检测长按结束
+                        onPress = {
+                            tryAwaitRelease()  // 等待手指抬起
+                            if (isLongPressing) {
+                                isLongPressing = false
+                                onLongPressEnd()
+                            }
+                        }
+                    )
+                }
+                // 手势2：水平滑动调节进度
+                .pointerInput(uiState.duration, uiState.currentPosition) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            isDragging = true
+                            dragTargetPosition = uiState.currentPosition
+                            onSeekStart()
+                        },
+                        onDragEnd = {
+                            if (isDragging) {
+                                val targetPos = dragTargetPosition
+                                isDragging = false
+                                onSeekEnd(targetPos)
+                            }
+                        },
+                        onDragCancel = {
+                            if (isDragging) {
+                                isDragging = false
+                                onSeekEnd(null)
+                            }
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            if (uiState.duration > 0) {
+                                val seekAmount = (dragAmount * 100).toLong()
+                                dragTargetPosition = (dragTargetPosition + seekAmount)
+                                    .coerceIn(0, uiState.duration)
+                            }
+                        }
+                    )
+                }
+        ) {
+            // ==================== 视频区域（带顶部控制栏） ====================
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 80.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth()
+                    .weight(1f)  // 占据剩余空间
             ) {
-                Text(
-                    text = "${uiState.longPressSpeedValue}x 快进中",
-                    color = Color(0xFFFF6B00),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                // 视频内容
+                if (isCurrentPage) {
+                    if (uiState.currentVideoUri != null) {
+                        // 视频播放器
+                        VideoPlayer(
+                            exoPlayer = exoPlayer,
+                            videoUri = uiState.currentVideoUri,
+                            isPlaying = uiState.isPlaying,
+                            playbackSpeed = uiState.actualSpeed,
+                            seekToPosition = uiState.seekToPosition,
+                            isFullscreen = uiState.isFullscreen,
+                            onProgressChanged = onProgressChanged,
+                            onPlaybackStateChanged = onPlaybackStateChanged,
+                            onSeekComplete = onSeekComplete,
+                            onBufferingChanged = onBufferingChanged,
+                            onVideoEnded = onVideoEnded,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        
+                        // 缓冲指示器
+                        if (uiState.isBuffering) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                            }
+                        }
+                    } else if (uiState.isVideoLoading) {
+                        // 视频源加载中
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = Color.White)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "正在加载视频...",
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    } else if (uiState.videoError != null) {
+                        // 视频加载错误 + 重试按钮
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "视频加载失败",
+                                    color = Color.White,
+                                    fontSize = 18.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = uiState.videoError,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    fontSize = 14.sp
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .background(Color.White.copy(alpha = 0.2f))
+                                        .clickable { onRetry() }
+                                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "重试",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "点击重试",
+                                        color = Color.White,
+                                        fontSize = 16.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // 非当前页面：显示剧集信息占位
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "第${episode.episodeNumber}集",
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = episode.name,
+                                color = Color.White.copy(alpha = 0.5f),
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+                
+                // 水平滑动进度指示器
+                if (isDragging && uiState.duration > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.8f))
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = PlayerUiState.formatDuration(dragTargetPosition),
+                                color = Color.White,
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "/ ${PlayerUiState.formatDuration(uiState.duration)}",
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+                
+                // 顶部渐变遮罩
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .align(Alignment.TopStart)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Black.copy(alpha = 0.7f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
                 )
+                
+                // 顶部控制栏
+                PlayerTopBar(
+                    seriesName = uiState.series.name,
+                    episodeTitle = "第${episode.episodeNumber}集",
+                    playbackSpeed = uiState.playbackSpeed,
+                    isFullscreen = uiState.isFullscreen,
+                    onBack = onBack,
+                    onSpeedClick = onShowSpeedSelector,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopStart)
+                )
+                
+                // 长按倍速提示
+                if (uiState.isLongPressSpeed) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 80.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.Black.copy(alpha = 0.7f))
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "${uiState.longPressSpeedValue}x 快进中",
+                            color = Color(0xFFFF6B00),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
+            
+            // ==================== 底部固定控制区（不透明背景） ====================
+            PlayerBottomBar(
+                currentPosition = uiState.currentPosition,
+                duration = uiState.duration,
+                currentPositionText = uiState.currentPositionText,
+                durationText = uiState.durationText,
+                episodeCount = uiState.allEpisodes.size,
+                isFullscreen = uiState.isFullscreen,
+                onSeek = onSeek,
+                onSeekStart = onSeekStart,
+                onSeekEnd = onSeekEnd,
+                onShowEpisodeSelector = onShowEpisodeSelector,
+                onToggleFullscreen = onToggleFullscreen,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -1034,22 +1309,34 @@ private fun PlayerBottomBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .background(
+                if (isFullscreen) {
+                    // 横屏：透明背景（会有渐变遮罩）
+                    Color.Transparent
+                } else {
+                    // 竖屏：纯黑色背景（固定控制区）
+                    Color.Black
+                }
+            )
             .padding(horizontal = horizontalPadding)
-            .padding(top = 50.dp, bottom = 0.dp)  // 增加 top padding，整体往下移
+            .padding(
+                top = if (isFullscreen) 80.dp else 1.dp,  // 横屏需要更大的 top padding，竖屏只留1dp缝隙
+                bottom = if (isFullscreen) 0.dp else 2.dp  // 竖屏底部 padding，非常紧凑
+            )
     ) {
         // ==================== 进度条行 ====================
         Row(
             modifier = Modifier
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom  // 底部对齐，确保视觉水平
+                .fillMaxWidth()
+                .height(24.dp),  // 固定进度条行高度
+            verticalAlignment = Alignment.CenterVertically  // 居中对齐
         ) {
             // 当前时间（拖动时高亮）
             Text(
                 text = displayPositionText,
                 color = if (isSliderDragging) Color(0xFFFF6B00) else Color.White,
                 fontSize = if (isSliderDragging) 14.sp else 12.sp,
-                fontWeight = if (isSliderDragging) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.padding(bottom = 2.dp)  // 微调对齐
+                fontWeight = if (isSliderDragging) FontWeight.Bold else FontWeight.Normal
             )
             
             // 进度条 Slider（抖音/快手风格）
@@ -1073,30 +1360,44 @@ private fun PlayerBottomBar(
                 },
                 modifier = Modifier
                     .weight(1f)
+                    .height(24.dp)  // 限制 Slider 高度
                     .padding(horizontal = 8.dp),
                 colors = SliderDefaults.colors(
-                    thumbColor = if (isSliderDragging) Color(0xFFFF6B00) else Color.White,
-                    activeTrackColor = Color(0xFFFF6B00),
+                    thumbColor = Color.White,
+                    activeTrackColor = Color.White,
                     inactiveTrackColor = Color.White.copy(alpha = 0.3f)
                 ),
                 track = { sliderState ->
-                    SliderDefaults.Track(
-                        sliderState = sliderState,
-                        modifier = Modifier.height(2.dp),  // 极细轨道
-                        colors = SliderDefaults.colors(
-                            activeTrackColor = Color(0xFFFF6B00),
-                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                        )
-                    )
+                    // 自定义轨道，确保已完成和未完成部分高度一致，且垂直居中
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)  // 统一高度2dp
+                        ) {
+                            // 未完成部分（背景）
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.White.copy(alpha = 0.3f))
+                            )
+                            // 已完成部分（前景）
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(sliderState.value)
+                                    .fillMaxHeight()
+                                    .background(Color.White)
+                            )
+                        }
+                    }
                 },
                 thumb = {
+                    // 不显示滑块，使用透明占位
                     Box(
-                        modifier = Modifier
-                            .size(10.dp)  // 小圆点滑块
-                            .background(
-                                color = if (isSliderDragging) Color(0xFFFF6B00) else Color.White,
-                                shape = CircleShape
-                            )
+                        modifier = Modifier.size(0.dp)
                     )
                 }
             )
@@ -1105,15 +1406,16 @@ private fun PlayerBottomBar(
             Text(
                 text = durationText,
                 color = Color.White,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(bottom = 2.dp)  // 微调对齐
+                fontSize = 12.sp
             )
         }
         
         // ==================== 选集栏 ====================
         Row(
             modifier = Modifier
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .height(28.dp)  // 固定高度，保持紧凑
+                .padding(top = 2.dp),  // 与进度条之间的间距
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -1122,31 +1424,32 @@ private fun PlayerBottomBar(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
                     .clickable(onClick = onShowEpisodeSelector)
-                    .padding(8.dp),
+                    .padding(horizontal = 8.dp),  // 只保留水平 padding，去掉垂直 padding
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "选集·共${episodeCount}集",
                     color = Color.White,
-                    fontSize = 14.sp
+                    fontSize = 14.sp  // 增大字体，更清晰
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowUp,
                     contentDescription = "展开",
                     tint = Color.White,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)  // 增大图标
                 )
             }
             
-            // 全屏切换按钮
-            IconButton(onClick = onToggleFullscreen) {
-                Icon(
-                    imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                    contentDescription = if (isFullscreen) "退出全屏" else "全屏",
-                    tint = Color.White
-                )
-            }
+            // 全屏切换按钮（紧凑版本）
+            Icon(
+                imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                contentDescription = if (isFullscreen) "退出全屏" else "全屏",
+                tint = Color.White,
+                modifier = Modifier
+                    .size(24.dp)  // 增大按钮，更容易点击
+                    .clickable(onClick = onToggleFullscreen)
+            )
         }
     }
 }
