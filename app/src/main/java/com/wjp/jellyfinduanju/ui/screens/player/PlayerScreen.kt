@@ -152,24 +152,24 @@ fun PlayerScreen(
     /** 控制栏显示状态（横屏模式使用） */
     var showControls by remember { mutableStateOf(true) }
     
-    /** 播放按钮显示状态（横屏模式使用） */
-    var showPlayButton by remember { mutableStateOf(true) }
+    /** 播放按钮显示状态（横屏模式使用，竖屏根据播放状态自动显示） */
+    var showPlayButton by remember { mutableStateOf(false) }  // 横屏模式初始隐藏
     
     // ============================================================================
     // 副作用：自动隐藏控制栏（仅横屏模式）
     // ============================================================================
     
     /**
-     * 3 秒无操作自动隐藏（仅横屏模式）
+     * 自动隐藏控制栏（仅横屏模式）
      * 
-     * 竖屏模式：不隐藏任何东西，点击直接暂停/播放
-     * 横屏模式：隐藏所有控制栏（顶部、底部、播放按钮）
+     * 竖屏模式：播放按钮根据播放状态显示，不需要自动隐藏
+     * 横屏模式：3 秒无操作隐藏所有控制栏（顶部、底部、播放按钮）
      */
     LaunchedEffect(showControls, uiState.isFullscreen) {
         if (uiState.isFullscreen && showControls) {
+            // 横屏模式：3 秒后隐藏控制栏
             delay(3000)
             showControls = false
-            showPlayButton = false
         }
     }
     
@@ -409,12 +409,12 @@ fun PlayerScreen(
                     showControls = showControls && isCurrentPage,
                     showPlayButton = showPlayButton && isCurrentPage,
                     onToggleControls = {
-                        // 横屏模式：切换所有控制栏
-                        // 竖屏模式：直接暂停/播放视频
+                        // 横屏模式：切换所有控制栏和播放按钮
+                        // 竖屏模式：直接播放/暂停视频
                         if (uiState.isFullscreen) {
                             showControls = !showControls
-                            showPlayButton = showControls  // 同步
                         } else {
+                            // 竖屏：直接播放/暂停
                             viewModel.togglePlayPause()
                         }
                     },
@@ -878,22 +878,17 @@ private fun PlayerContent(
             )
         }
         
-        // 中央播放/暂停按钮：只在横屏模式下显示，受 showPlayButton 控制
-        if (uiState.isFullscreen && showPlayButton) {
-            IconButton(
-                onClick = onTogglePlayPause,
+        // 中央播放/暂停按钮：横屏模式，受 showControls 控制
+        if (uiState.isFullscreen && showControls) {
+            Icon(
+                imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (uiState.isPlaying) "暂停" else "播放",
+                tint = Color.White.copy(alpha = 0.9f),  // 稍微透明
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(72.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-            ) {
-                Icon(
-                    imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (uiState.isPlaying) "暂停" else "播放",
-                    tint = Color.White,
-                    modifier = Modifier.size(48.dp)
-                )
-            }
+                    .size(64.dp)  // 圆润的大图标
+                    .clickable(onClick = onTogglePlayPause)
+            )
         }
         
             // ==================== 长按倍速提示（始终显示，不受控制栏影响） ====================
@@ -1167,6 +1162,21 @@ private fun PlayerContent(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+                
+                // 中央播放按钮：竖屏模式，仅在暂停时显示
+                if (!uiState.isPlaying && isCurrentPage) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "播放",
+                        tint = Color.White.copy(alpha = 0.9f),  // 稍微透明
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(64.dp)  // 圆润的大图标
+                            .clickable { 
+                                onTogglePlayPause()
+                            }
+                    )
                 }
             }
             
