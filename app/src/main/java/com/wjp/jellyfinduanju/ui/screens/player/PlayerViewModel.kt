@@ -72,9 +72,6 @@ class PlayerViewModel(
     /** 上次保存进度的时间戳，用于防抖 */
     private var lastProgressSaveTime = 0L
     
-    /** 进度保存间隔：10秒 */
-    private val progressSaveInterval = 10_000L
-    
     // ============================================================================
     // 初始化
     // ============================================================================
@@ -89,13 +86,25 @@ class PlayerViewModel(
     /**
      * 启动进度保存循环
      * 
-     * 每隔 10 秒自动保存一次播放进度到本地和服务器
+     * 根据设置中的上报间隔自动保存播放进度到本地和服务器
+     * 如果设置为 0，则不启动自动上报
      * 这是一个无限循环，在 ViewModel 销毁时会被取消
      */
     private fun startProgressSaveLoop() {
+        // 读取上报间隔设置（秒）
+        val reportIntervalSeconds = AppSettings.reportInterval
+        
+        // 如果设置为 0，不启动自动上报
+        if (reportIntervalSeconds == 0) {
+            return
+        }
+        
+        // 转换为毫秒
+        val intervalMillis = reportIntervalSeconds * 1_000L
+        
         progressSaveJob = viewModelScope.launch {
             while (true) {
-                delay(progressSaveInterval)
+                delay(intervalMillis)
                 saveCurrentProgress()
             }
         }
@@ -376,9 +385,9 @@ class PlayerViewModel(
             
             if (state.currentPosition <= 0) return
             
-            // 防抖：距离上次保存不足 5 秒则跳过
+            // 防抖：距离上次保存不足 5 秒则跳过（避免频繁保存影响性能）
             val now = System.currentTimeMillis()
-            if (!force && now - lastProgressSaveTime < progressSaveInterval / 2) {
+            if (!force && now - lastProgressSaveTime < 5_000L) {
                 return
             }
             lastProgressSaveTime = now
