@@ -426,7 +426,7 @@ private fun DetailHeader(
             modifier = Modifier
                 .width(120.dp)
                 .aspectRatio(0.67f)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(12.dp))  // 现代化圆角
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             if (imageUrl != null) {
@@ -682,12 +682,12 @@ private fun EpisodeCard(
     Box(
         modifier = Modifier
             .size(width = 72.dp, height = 64.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(12.dp))  // 现代化圆角
             .background(backgroundColor)
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
                 color = borderColor,
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(12.dp)  // 现代化圆角
             )
             .combinedClickable(
                 enabled = isSelectable || !isInSelectMode,

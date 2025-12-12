@@ -226,7 +226,7 @@ private fun ListScreenContent(
                             }
                         },
                         singleLine = true,
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(28.dp),  // 更大的圆角搜索框
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -660,21 +660,21 @@ private fun SeriesGridItem(
                     onClick = onClick,
                     onLongClick = onLongClick
                 ),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(16.dp),  // 大圆角，更现代
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                containerColor = MaterialTheme.colorScheme.surface  // 使用 surface 而不是 surfaceVariant，更统一
             ),
             elevation = CardDefaults.cardElevation(
-                defaultElevation = 2.dp
+                defaultElevation = 0.dp  // 扁平化，无阴影
             )
         ) {
         Column {
             // 图片区域
-            Box(
-                modifier = Modifier
+                Box(
+                    modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(0.67f)  // 2:3 的宽高比（海报比例）
-                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))  // 大圆角
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 if (imageUrl != null) {

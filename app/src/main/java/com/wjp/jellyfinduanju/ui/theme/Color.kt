@@ -5,33 +5,67 @@ import androidx.compose.ui.graphics.Color
 /**
  * Color.kt - 应用颜色定义
  * 
- * 这里定义了应用中使用的所有颜色常量
- * 使用 Color(0xAARRGGBB) 格式，其中：
- * - AA: Alpha 透明度（FF = 完全不透明）
- * - RR: 红色分量
- * - GG: 绿色分量
- * - BB: 蓝色分量
+ * 极简黑白风格（Minimalist Black & White）
+ * 灵感来源：Apple Music, Spotify
  */
 
-// ============ Material 3 默认调色板 ============
+// ============ 极简风主色 ============
 
-// 浅色主题的紫色系
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+// 主色：翡翠绿（唯一的亮色点缀）
+val MinimalGreen = Color(0xFF10B981)  // 翡翠绿 - 现代、清新
 
-// 深色主题的紫色系
-val Purple40 = Color(0xFF6650a4)
-val PurpleGrey40 = Color(0xFF625b71)
-val Pink40 = Color(0xFF7D5260)
+// 主色浅色变体
+val MinimalGreenLight = Color(0xFF34D399)  // 浅翡翠绿
 
-// ============ Jellyfin 品牌色 ============
+// 主色深色变体
+val MinimalGreenDark = Color(0xFF059669)  // 深翡翠绿
 
-// Jellyfin 的标志性蓝色
-val JellyfinPurple = Color(0xFF00A4DC)
+// 次要强调色：天空蓝（可选）
+val MinimalBlue = Color(0xFF0EA5E9)  // 天空蓝
 
-// 深色背景色
-val JellyfinDark = Color(0xFF101010)
+// 警告/强调色：琥珀色
+val MinimalAmber = Color(0xFFFBBF24)  // 琥珀色
 
-// 深色表面色（略浅于背景，用于卡片等）
-val JellyfinSurface = Color(0xFF1A1A1A)
+// 错误色：柔和红
+val MinimalRed = Color(0xFFEF4444)  // 柔和红
+
+// ============ 深色模式背景 ============
+
+// 纯黑背景（极简）
+val MinimalBlack = Color(0xFF000000)  // 纯黑
+
+// 深灰背景（标准）
+val MinimalDarkBackground = Color(0xFF121212)  // 深灰黑
+
+// 卡片表面：略浅灰
+val MinimalDarkSurface = Color(0xFF1E1E1E)  // 深灰
+
+// 表面变体：更浅的灰
+val MinimalDarkSurfaceVariant = Color(0xFF2C2C2C)  // 中灰
+
+// ============ 浅色模式背景 ============
+
+// 纯白背景
+val MinimalWhite = Color(0xFFFFFFFF)  // 纯白
+
+// 浅灰背景
+val MinimalLightBackground = Color(0xFFFAFAFA)  // 极浅灰
+
+// 卡片表面
+val MinimalLightSurface = Color(0xFFFFFFFF)  // 纯白
+
+// 表面变体
+val MinimalLightSurfaceVariant = Color(0xFFF5F5F5)  // 浅灰
+
+// ============ 文字颜色 ============
+
+// 深色模式文字
+val MinimalTextPrimary = Color(0xFFFFFFFF)  // 纯白
+val MinimalTextSecondary = Color(0xFFB0B0B0)  // 浅灰
+val MinimalTextTertiary = Color(0xFF707070)  // 中灰
+
+// 浅色模式文字
+val MinimalTextPrimaryLight = Color(0xFF000000)  // 纯黑
+val MinimalTextSecondaryLight = Color(0xFF525252)  // 深灰
+val MinimalTextTertiaryLight = Color(0xFF9CA3AF)  // 中灰
+

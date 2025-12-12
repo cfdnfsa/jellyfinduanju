@@ -20,43 +20,92 @@ import androidx.core.view.WindowCompat
  */
 
 /**
- * 深色主题配色方案
+ * 深色主题配色方案（极简黑白风格）
  * 
- * 使用 Jellyfin 风格的深色背景 + 蓝色强调色
+ * 灵感：Apple Music, Spotify
+ * 特点：深灰背景 + 翡翠绿强调色 + 极简设计
  */
 private val DarkColorScheme = darkColorScheme(
-    // 主色调：用于按钮、链接、高亮等
-    primary = JellyfinPurple,
-    // 次要色调
-    secondary = PurpleGrey80,
-    // 第三色调
-    tertiary = Pink80,
-    // 背景色：整个应用的背景
-    background = JellyfinDark,
-    // 表面色：卡片、对话框等组件的背景
-    surface = JellyfinSurface,
-    // 以下是对应的「上层」颜色（放在 primary/surface 等上面的文字/图标颜色）
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color.White,
-    onSurface = Color.White
+    // 主色调：翡翠绿（唯一的亮色点缀）
+    primary = MinimalGreen,
+    primaryContainer = MinimalGreen.copy(alpha = 0.15f),
+    onPrimary = MinimalBlack,
+    onPrimaryContainer = MinimalGreenLight,
+    
+    // 次要色调：天空蓝
+    secondary = MinimalBlue,
+    secondaryContainer = MinimalBlue.copy(alpha = 0.15f),
+    onSecondary = MinimalBlack,
+    onSecondaryContainer = Color(0xFF7DD3FC),
+    
+    // 第三色调：琥珀色
+    tertiary = MinimalAmber,
+    tertiaryContainer = MinimalAmber.copy(alpha = 0.15f),
+    onTertiary = MinimalBlack,
+    onTertiaryContainer = Color(0xFFFDE68A),
+    
+    // 背景色：深灰（不用纯黑，更柔和）
+    background = MinimalDarkBackground,
+    onBackground = MinimalTextPrimary,
+    
+    // 表面色：卡片、对话框等（略浅于背景）
+    surface = MinimalDarkSurface,
+    surfaceVariant = MinimalDarkSurfaceVariant,
+    onSurface = MinimalTextPrimary,
+    onSurfaceVariant = MinimalTextSecondary,
+    
+    // 轮廓线颜色
+    outline = MinimalTextTertiary,
+    outlineVariant = Color(0xFF3A3A3A),
+    
+    // 错误色
+    error = MinimalRed,
+    errorContainer = MinimalRed.copy(alpha = 0.15f),
+    onError = MinimalWhite,
+    onErrorContainer = Color(0xFFFECDD3)
 )
 
 /**
- * 浅色主题配色方案
+ * 浅色主题配色方案（极简黑白风格）
  */
 private val LightColorScheme = lightColorScheme(
-    primary = JellyfinPurple,
-    secondary = PurpleGrey40,
-    tertiary = Pink40,
-    background = Color.White,
-    surface = Color(0xFFF5F5F5),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color.Black,
-    onSurface = Color.Black
+    // 主色调：翡翠绿
+    primary = MinimalGreen,
+    primaryContainer = Color(0xFFD1FAE5),
+    onPrimary = MinimalWhite,
+    onPrimaryContainer = MinimalGreenDark,
+    
+    // 次要色调：天空蓝
+    secondary = MinimalBlue,
+    secondaryContainer = Color(0xFFE0F2FE),
+    onSecondary = MinimalWhite,
+    onSecondaryContainer = Color(0xFF075985),
+    
+    // 第三色调：琥珀色
+    tertiary = MinimalAmber,
+    tertiaryContainer = Color(0xFFFEF3C7),
+    onTertiary = MinimalBlack,
+    onTertiaryContainer = Color(0xFF78350F),
+    
+    // 背景色：柔和白
+    background = MinimalLightBackground,
+    onBackground = MinimalTextPrimaryLight,
+    
+    // 表面色：纯白
+    surface = MinimalLightSurface,
+    surfaceVariant = MinimalLightSurfaceVariant,
+    onSurface = MinimalTextPrimaryLight,
+    onSurfaceVariant = MinimalTextSecondaryLight,
+    
+    // 轮廓线颜色
+    outline = MinimalTextTertiaryLight,
+    outlineVariant = Color(0xFFE5E5E5),
+    
+    // 错误色
+    error = MinimalRed,
+    errorContainer = Color(0xFFFEE2E2),
+    onError = MinimalWhite,
+    onErrorContainer = Color(0xFF7F1D1D)
 )
 
 /**
