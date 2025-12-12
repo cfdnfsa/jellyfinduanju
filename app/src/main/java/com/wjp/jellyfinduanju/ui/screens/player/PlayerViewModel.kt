@@ -620,8 +620,29 @@ class PlayerViewModel(
 
             // 获取历史进度（ticks 转毫秒）
             val savedPosition = episode.playbackPositionTicks / 10_000
+            val videoDuration = episode.runTimeTicks / 10_000  // 视频总时长（毫秒）
+            
+            // 检查剩余时间，如果小于2秒，从头播放
+            val shouldResetProgress = if (videoDuration > 0 && savedPosition > 0) {
+                val remainingTime = videoDuration - savedPosition
+                remainingTime < 500  // 剩余时间小于500ms
+            } else {
+                false
+            }
 
-            if (savedPosition > 0) {
+            if (shouldResetProgress) {
+                // 剩余时间太短，从头播放并重置进度
+                _uiState.update { it.copy(seekToPosition = 0) }
+                // 同步重置本地进度为0
+                try {
+                    detailRepository.savePlaybackPositionLocal(
+                        seasonId = episode.seasonId,
+                        episodeId = episode.id,
+                        positionTicks = 0
+                    )
+                } catch (_: Exception) { }
+            } else if (savedPosition > 0) {
+                // 正常情况，恢复到历史进度
                 _uiState.update { it.copy(seekToPosition = savedPosition) }
             }
             
