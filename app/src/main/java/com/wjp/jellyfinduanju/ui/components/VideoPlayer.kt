@@ -84,6 +84,10 @@ fun VideoPlayer(
             bufferingStartTime = 0L
             isBufferingNow = false
             
+            // 先停止并清除旧视频（确保网络慢时也能正确切换）
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+            
             // 判断是本地文件还是网络 URL
             val uri = if (videoUri.startsWith("/") || videoUri.startsWith("file://")) {
                 Uri.parse("file://$videoUri")
