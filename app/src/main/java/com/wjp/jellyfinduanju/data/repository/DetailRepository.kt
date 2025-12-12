@@ -85,7 +85,7 @@ class DetailRepository(
      * @param seriesId 剧集 ID
      * @return 是否有缓存
      */
-    fun hasCache(seriesId: String): Boolean {
+    suspend fun hasCache(seriesId: String): Boolean {
         return episodeDataStore.hasSeasonsCache(seriesId)
     }
     
@@ -465,7 +465,7 @@ class DetailRepository(
      * @param episodeId 剧集 ID
      * @param positionTicks 播放位置（ticks，1秒=10,000,000 ticks）
      */
-    fun savePlaybackPositionLocal(seasonId: String, episodeId: String, positionTicks: Long) {
+    suspend fun savePlaybackPositionLocal(seasonId: String, episodeId: String, positionTicks: Long) {
         val episodes = episodeDataStore.getEpisodes(seasonId) ?: return
         val episode = episodes.find { it.id == episodeId } ?: return
         

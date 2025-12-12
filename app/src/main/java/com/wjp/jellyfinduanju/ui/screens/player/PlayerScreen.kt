@@ -277,6 +277,9 @@ fun PlayerScreen(
                 // 恢复状态栏颜色为透明（让主题决定）
                 window.statusBarColor = android.graphics.Color.TRANSPARENT
                 
+                // 设置状态栏图标为深色
+                controller.isAppearanceLightStatusBars = true
+                
                 // 清除屏幕常亮标志
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
@@ -598,7 +601,7 @@ private fun PlayerContent(
     
     if (uiState.isFullscreen) {
         // ==================== 横屏模式：悬浮控制栏（沉浸式） ====================
-        Box(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             // 手势1：点击和长按
@@ -1090,20 +1093,20 @@ private fun PlayerContent(
                 
                 // 水平滑动进度指示器
                 if (isDragging && uiState.duration > 0) {
-                    Box(
-                        modifier = Modifier
+            Box(
+                modifier = Modifier
                             .align(Alignment.Center)
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color.Black.copy(alpha = 0.8f))
                             .padding(horizontal = 24.dp, vertical = 16.dp)
-                    ) {
+            ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
+                Text(
                                 text = PlayerUiState.formatDuration(dragTargetPosition),
                                 color = Color.White,
                                 fontSize = 32.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                    fontWeight = FontWeight.Bold
+                )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "/ ${PlayerUiState.formatDuration(uiState.duration)}",

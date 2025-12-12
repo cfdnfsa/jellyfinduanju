@@ -289,7 +289,7 @@ object DownloadManager {
     /**
      * 删除已完成的下载（包括文件）
      */
-    fun deleteCompletedDownload(taskId: String) {
+    suspend fun deleteCompletedDownload(taskId: String) {
         val task = downloadDataStore.getTask(taskId) ?: return
         
         // 删除文件
@@ -531,7 +531,7 @@ object DownloadManager {
      * @param seriesId 剧集 ID
      * @return 删除的文件数量
      */
-    fun deleteAllCacheForSeries(seriesId: String): Int {
+    suspend fun deleteAllCacheForSeries(seriesId: String): Int {
         var deletedCount = 0
         
         try {

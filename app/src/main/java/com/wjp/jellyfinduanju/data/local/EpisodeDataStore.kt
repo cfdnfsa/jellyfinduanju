@@ -3,6 +3,8 @@ package com.wjp.jellyfinduanju.data.local
 import com.tencent.mmkv.MMKV
 import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
 import com.wjp.jellyfinduanju.data.model.SeasonLocalData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -45,7 +47,7 @@ class EpisodeDataStore {
      * @param seriesId 剧集 ID
      * @param seasons 季列表
      */
-    fun saveSeasons(seriesId: String, seasons: List<SeasonLocalData>) {
+    suspend fun saveSeasons(seriesId: String, seasons: List<SeasonLocalData>) = withContext(Dispatchers.IO) {
         val key = seasonsKey(seriesId)
         val jsonString = json.encodeToString(seasons)
         mmkv.encode(key, jsonString)
@@ -60,16 +62,16 @@ class EpisodeDataStore {
      * @param seriesId 剧集 ID
      * @return 季列表，不存在返回 null
      */
-    fun getSeasons(seriesId: String): List<SeasonLocalData>? {
+    suspend fun getSeasons(seriesId: String): List<SeasonLocalData>? = withContext(Dispatchers.IO) {
         val key = seasonsKey(seriesId)
         val jsonString = mmkv.decodeString(key)
         
         if (jsonString.isNullOrEmpty()) {
             android.util.Log.d("EpisodeDataStore", "getSeasons: 缓存不存在 key=$key")
-            return null
+            return@withContext null
         }
         
-        return try {
+        return@withContext try {
             val result = json.decodeFromString<List<SeasonLocalData>>(jsonString)
             android.util.Log.d("EpisodeDataStore", "getSeasons: 从缓存加载 ${result.size} 个季")
             result
@@ -87,8 +89,8 @@ class EpisodeDataStore {
      * @param seriesId 剧集 ID
      * @return 是否有缓存
      */
-    fun hasSeasonsCache(seriesId: String): Boolean {
-        return mmkv.containsKey(seasonsKey(seriesId))
+    suspend fun hasSeasonsCache(seriesId: String): Boolean = withContext(Dispatchers.IO) {
+        return@withContext mmkv.containsKey(seasonsKey(seriesId))
     }
     
     // ==================== 剧集数据操作 ====================
@@ -99,7 +101,7 @@ class EpisodeDataStore {
      * @param seasonId 季 ID
      * @param episodes 剧集列表
      */
-    fun saveEpisodes(seasonId: String, episodes: List<EpisodeLocalData>) {
+    suspend fun saveEpisodes(seasonId: String, episodes: List<EpisodeLocalData>) = withContext(Dispatchers.IO) {
         val key = episodesKey(seasonId)
         val jsonString = json.encodeToString(episodes)
         mmkv.encode(key, jsonString)
@@ -112,16 +114,16 @@ class EpisodeDataStore {
      * @param seasonId 季 ID
      * @return 剧集列表，不存在返回 null
      */
-    fun getEpisodes(seasonId: String): List<EpisodeLocalData>? {
+    suspend fun getEpisodes(seasonId: String): List<EpisodeLocalData>? = withContext(Dispatchers.IO) {
         val key = episodesKey(seasonId)
         val jsonString = mmkv.decodeString(key)
         
         if (jsonString.isNullOrEmpty()) {
             android.util.Log.d("EpisodeDataStore", "getEpisodes: 缓存不存在 key=$key")
-            return null
+            return@withContext null
         }
         
-        return try {
+        return@withContext try {
             val result = json.decodeFromString<List<EpisodeLocalData>>(jsonString)
             android.util.Log.d("EpisodeDataStore", "getEpisodes: 从缓存加载 ${result.size} 个剧集")
             result
@@ -139,8 +141,8 @@ class EpisodeDataStore {
      * @param seasonId 季 ID
      * @return 是否有缓存
      */
-    fun hasEpisodesCache(seasonId: String): Boolean {
-        return mmkv.containsKey(episodesKey(seasonId))
+    suspend fun hasEpisodesCache(seasonId: String): Boolean = withContext(Dispatchers.IO) {
+        return@withContext mmkv.containsKey(episodesKey(seasonId))
     }
     
     /**
@@ -149,7 +151,7 @@ class EpisodeDataStore {
      * @param seasonId 季 ID
      * @param episode 更新后的剧集
      */
-    fun updateEpisode(seasonId: String, episode: EpisodeLocalData) {
+    suspend fun updateEpisode(seasonId: String, episode: EpisodeLocalData) {
         val episodes = getEpisodes(seasonId)?.toMutableList() ?: return
         val index = episodes.indexOfFirst { it.id == episode.id }
         if (index != -1) {
@@ -166,7 +168,7 @@ class EpisodeDataStore {
      * @param isCached 是否已缓存
      * @param localVideoPath 本地视频路径
      */
-    fun updateEpisodeCacheStatus(
+    suspend fun updateEpisodeCacheStatus(
         seasonId: String,
         episodeId: String,
         isCached: Boolean,
@@ -189,7 +191,7 @@ class EpisodeDataStore {
      * @param seriesId 剧集 ID
      * @return 是否有视频缓存
      */
-    fun hasAnyVideoCache(seriesId: String): Boolean {
+    suspend fun hasAnyVideoCache(seriesId: String): Boolean {
         val seasons = getSeasons(seriesId) ?: return false
         return seasons.any { season ->
             getEpisodes(season.id)?.any { it.isCached } == true
@@ -201,7 +203,7 @@ class EpisodeDataStore {
      * 
      * @param seriesId 剧集 ID
      */
-    fun deleteSeriesDetailCache(seriesId: String) {
+    suspend fun deleteSeriesDetailCache(seriesId: String) = withContext(Dispatchers.IO) {
         // 先获取季列表
         val seasons = getSeasons(seriesId)
         
@@ -223,8 +225,8 @@ class EpisodeDataStore {
      * @param seriesId 剧集 ID
      * @return 缓存时间戳，不存在返回 0
      */
-    fun getCacheTime(seriesId: String): Long {
-        return mmkv.decodeLong(cacheTimeKey(seriesId), 0)
+    suspend fun getCacheTime(seriesId: String): Long = withContext(Dispatchers.IO) {
+        return@withContext mmkv.decodeLong(cacheTimeKey(seriesId), 0)
     }
     
     // ==================== 删除操作 ====================
@@ -235,7 +237,7 @@ class EpisodeDataStore {
      * @param seriesId 剧集 ID
      * @param seasonIds 该剧集的季 ID 列表
      */
-    fun clearSeriesCache(seriesId: String, seasonIds: List<String>) {
+    suspend fun clearSeriesCache(seriesId: String, seasonIds: List<String>) = withContext(Dispatchers.IO) {
         // 删除季缓存
         mmkv.removeValueForKey(seasonsKey(seriesId))
         mmkv.removeValueForKey(cacheTimeKey(seriesId))

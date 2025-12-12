@@ -399,7 +399,7 @@ class SeriesRepository(
     /**
      * 清除所有本地数据
      */
-    fun clearAllData() {
+    suspend fun clearAllData() {
         seriesDataStore.clearAll()
         episodeDataStore.clearAll()
         ImageCacheUtils.clearAllImageCache()
@@ -415,7 +415,7 @@ class SeriesRepository(
      * 
      * @param seriesId 剧集 ID
      */
-    fun deleteSeriesAndCleanup(seriesId: String) {
+    suspend fun deleteSeriesAndCleanup(seriesId: String) {
         // 获取该剧集的所有季 ID（用于清理剧集缓存）
         val seasons = episodeDataStore.getSeasons(seriesId)
         val seasonIds = seasons?.map { it.id } ?: emptyList()
