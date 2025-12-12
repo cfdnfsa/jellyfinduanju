@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
@@ -63,12 +64,16 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -105,6 +110,20 @@ fun ListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     
+    // 监听生命周期，每次页面恢复（Resume）时刷新观看状态
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshWatchStatus()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     ListScreenContent(
         uiState = uiState,
         allFilterTags = viewModel.getAllFilterTags(),
@@ -682,9 +701,9 @@ private fun SeriesGridItem(
                     }
                 }
                 
-                // 左上角：观看进度状态
-                val hasProgress = series.lastWatchPositionTicks > 0 || series.played
-                if (hasProgress) {
+                // 左上角：已删除标识或观看进度状态
+                if (series.isDeletedFromServer) {
+                    // 优先显示：已从服务器删除（红色）
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -696,22 +715,48 @@ private fun SeriesGridItem(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (series.played) {
-                            // 已看完：绿色 ✓
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "已看完",
-                                modifier = Modifier.size(20.dp),
-                                tint = Color(0xFF4CAF50)  // 绿色
-                            )
-                        } else {
-                            // 正在看：橙色播放图标
-                            Icon(
-                                imageVector = Icons.Default.PlayCircle,
-                                contentDescription = "正在看",
-                                modifier = Modifier.size(20.dp),
-                                tint = Color(0xFFFF9800)  // 橙色
-                            )
+                        Icon(
+                            imageVector = Icons.Default.CloudOff,
+                            contentDescription = "已从服务器删除",
+                            modifier = Modifier.size(20.dp),
+                            tint = Color(0xFFF44336)  // 红色
+                        )
+                    }
+                } else {
+                    // 观看进度状态判断：
+                    // 1. played = true → 已看完（绿色）
+                    // 2. played = false && lastWatchTime > 0 → 正在看（橙色）
+                    // 3. played = false && lastWatchTime = 0 → 没看过（不显示图标）
+                    val hasProgress = series.played || series.lastWatchTime > 0
+                    if (hasProgress) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(4.dp)
+                                .size(24.dp)
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.6f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (series.played) {
+                                // 已看完：绿色 ✓
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = "已看完",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = Color(0xFF4CAF50)  // 绿色
+                                )
+                            } else {
+                                // 正在看：橙色播放图标
+                                Icon(
+                                    imageVector = Icons.Default.PlayCircle,
+                                    contentDescription = "正在看",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = Color(0xFFFF9800)  // 橙色
+                                )
+                            }
                         }
                     }
                 }

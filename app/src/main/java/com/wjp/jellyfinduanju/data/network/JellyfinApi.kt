@@ -103,6 +103,8 @@ interface JellyfinApi {
      * @param fields 需要返回的字段，多个字段用逗号分隔
      * @param limit 返回数量限制
      * @param startIndex 起始索引（用于分页）
+     * @param parentId 父项目 ID（用于筛选特定媒体库）
+     * @param filters 过滤条件，如 "IsPlayed", "IsUnplayed", "IsResumable"
      * @return 媒体项列表响应
      */
     @GET("Users/{userId}/Items")
@@ -116,7 +118,8 @@ interface JellyfinApi {
         @Query("Fields") fields: String = "Overview,PrimaryImageAspectRatio,ChildCount",
         @Query("Limit") limit: Int? = null,
         @Query("StartIndex") startIndex: Int? = null,
-        @Query("ParentId") parentId: String? = null
+        @Query("ParentId") parentId: String? = null,
+        @Query("Filters") filters: String? = null
     ): Response<ItemsResponse>
     
     /**

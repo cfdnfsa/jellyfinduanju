@@ -54,10 +54,34 @@ class ListViewModel(
     
     /**
      * 加载本地缓存的剧集列表
+     * 
+     * 同时从本地 Episode 缓存更新观看状态
      */
     private fun loadLocalSeries() {
-        allSeriesList = seriesRepository.getLocalSeriesList()
-        applySearchFilter()
+        viewModelScope.launch {
+            // 先从本地 Episode 缓存更新所有 Series 的观看状态
+            seriesRepository.updateSeriesStatusFromLocalEpisodes()
+            
+            // 然后加载列表
+            allSeriesList = seriesRepository.getLocalSeriesList()
+            applySearchFilter()
+        }
+    }
+    
+    /**
+     * 刷新观看状态
+     * 
+     * 从详情页返回列表页时调用，更新观看状态
+     */
+    fun refreshWatchStatus() {
+        viewModelScope.launch {
+            // 从本地 Episode 缓存更新观看状态
+            seriesRepository.updateSeriesStatusFromLocalEpisodes()
+            
+            // 重新加载列表以触发 UI 更新
+            allSeriesList = seriesRepository.getLocalSeriesList()
+            applySearchFilter()
+        }
     }
     
     // ==================== 搜索功能 ====================
