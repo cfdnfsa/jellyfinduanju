@@ -417,19 +417,26 @@ class DetailRepository(
     // ==================== 获取图片 URL ====================
     
     /**
-     * 获取剧集图片 URL
+     * 获取剧集图片 URL（优先使用本地缓存）
      * 
      * @param itemId 项目 ID
      * @param imageTag 图片标签
-     * @return 图片 URL
+     * @return 图片 URL（本地路径或远程 URL）
      */
-    suspend fun getImageUrl(itemId: String, imageTag: String?): String? {
-        if (imageTag == null) return null
+    suspend fun getImageUrl(itemId: String, imageTag: String?): String? = withContext(Dispatchers.IO) {
+        if (imageTag == null) return@withContext null
         
-        val serverConfig = authRepository.serverConfig.first() ?: return null
+        // 先检查本地是否有缓存
+        val localFile = com.wjp.jellyfinduanju.util.ImageCacheUtils.getLocalImageFile(itemId)
+        if (localFile != null) {
+            return@withContext "file://${localFile.absolutePath}"
+        }
+        
+        // 没有缓存，返回远程 URL
+        val serverConfig = authRepository.serverConfig.first() ?: return@withContext null
         // 使用当前激活的服务器地址（支持主备切换）
         val activeServerUrl = authRepository.getActiveServerUrl() ?: serverConfig.serverUrl
-        return "${activeServerUrl}/Items/$itemId/Images/Primary?tag=$imageTag"
+        return@withContext "${activeServerUrl}/Items/$itemId/Images/Primary?tag=$imageTag"
     }
     
     // ==================== 获取视频流 URL ====================
