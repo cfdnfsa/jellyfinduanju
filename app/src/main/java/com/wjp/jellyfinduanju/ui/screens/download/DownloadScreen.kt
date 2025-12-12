@@ -162,7 +162,7 @@ fun DownloadScreen(
                     }
                 }
                 
-                // 等待中
+                // 等待中/已暂停
                 if (uiState.pendingTasks.isNotEmpty()) {
                     item {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -174,6 +174,7 @@ fun DownloadScreen(
                     items(uiState.pendingTasks, key = { it.id }) { task ->
                         PendingTaskItem(
                             task = task,
+                            onResume = { viewModel.resumeDownload(task.id) },
                             onCancel = { 
                                 showDeleteDialog = DeleteDialogState.CancelTask(task)
                             }
@@ -372,8 +373,11 @@ private fun DownloadingTaskItem(
 @Composable
 private fun PendingTaskItem(
     task: DownloadTask,
+    onResume: () -> Unit,
     onCancel: () -> Unit
 ) {
+    val isPaused = task.status == DownloadStatus.PAUSED
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -395,10 +399,21 @@ private fun PendingTaskItem(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "第${task.seasonNumber}季 第${task.episodeNumber}集 · 等待中...",
+                    text = "第${task.seasonNumber}季 第${task.episodeNumber}集 · ${if (isPaused) "已暂停" else "等待中..."}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            
+            // 如果是暂停状态，显示恢复按钮
+            if (isPaused) {
+                IconButton(onClick = onResume) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "恢复",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             
             // 取消按钮

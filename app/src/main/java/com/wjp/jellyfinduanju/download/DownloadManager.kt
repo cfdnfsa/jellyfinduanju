@@ -251,14 +251,19 @@ object DownloadManager {
         downloadJobs[taskId]?.cancel()
         downloadJobs.remove(taskId)
         
-        // 删除任务
-        downloadDataStore.deleteTask(taskId)
-        
-        // 删除已下载的文件
+        // 先获取任务信息（用于删除文件）
         val task = downloadDataStore.getTask(taskId)
+        
+        // 删除已下载的文件（包括未完成的部分文件）
         task?.localPath?.let { path ->
-            File(path).delete()
+            val file = File(path)
+            if (file.exists()) {
+                file.delete()
+            }
         }
+        
+        // 删除任务记录
+        downloadDataStore.deleteTask(taskId)
         
         scope.launch {
             updateDownloadingTasksFlow()

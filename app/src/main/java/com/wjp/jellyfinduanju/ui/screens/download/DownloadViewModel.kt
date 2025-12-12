@@ -53,7 +53,7 @@ class DownloadViewModel(
      */
     private fun updateUiState(tasks: List<DownloadTask>) {
         val downloading = tasks.filter { it.status == DownloadStatus.DOWNLOADING }
-        val pending = tasks.filter { it.status == DownloadStatus.PENDING }
+        val pending = tasks.filter { it.status == DownloadStatus.PENDING || it.status == DownloadStatus.PAUSED }
         val failed = tasks.filter { it.status == DownloadStatus.FAILED }
         val completed = tasks.filter { it.status == DownloadStatus.COMPLETED }
         

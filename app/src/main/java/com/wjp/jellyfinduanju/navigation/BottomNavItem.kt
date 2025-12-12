@@ -2,7 +2,6 @@ package com.wjp.jellyfinduanju.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -34,15 +33,6 @@ sealed class BottomNavItem(
         route = "list",
         title = "列表",
         icon = Icons.Default.List // Material Icons 中的列表图标
-    )
-
-    /**
-     * 历史页 - 显示观看历史记录
-     */
-    data object History : BottomNavItem(
-        route = "history",
-        title = "历史",
-        icon = Icons.Default.History // 时钟/历史图标
     )
 
     /**

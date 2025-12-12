@@ -23,7 +23,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.wjp.jellyfinduanju.navigation.BottomNavItem
-import com.wjp.jellyfinduanju.ui.screens.HistoryScreen
 import com.wjp.jellyfinduanju.ui.screens.download.DownloadScreen
 import com.wjp.jellyfinduanju.ui.screens.download.DownloadViewModel
 import com.wjp.jellyfinduanju.ui.screens.download.DownloadViewModelFactory
@@ -194,7 +193,6 @@ private fun MainBottomNavigationBar(
     // 底部导航项列表
     val bottomNavItems = listOf(
         BottomNavItem.List,
-        BottomNavItem.History,
         BottomNavItem.Download,
         BottomNavItem.Settings
     )
@@ -268,11 +266,6 @@ private fun MainNavHost(
                     navController.navigate(Routes.seriesDetail(series.id))
                 }
             )
-        }
-        
-        // 历史页
-        composable(BottomNavItem.History.route) {
-            HistoryScreen()
         }
         
         // 下载页
