@@ -599,64 +599,64 @@ private fun PlayerContent(
     if (uiState.isFullscreen) {
         // ==================== 横屏模式：悬浮控制栏（沉浸式） ====================
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                // 手势1：点击和长按
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        // 单击：切换控制栏显示
-                        onTap = { onToggleControls() },
-                        // 长按：开始 3x 倍速
-                        onLongPress = {
-                            isLongPressing = true
-                            onLongPressStart()
-                        },
-                        // 按压：用于检测长按结束
-                        onPress = {
-                            tryAwaitRelease()  // 等待手指抬起
-                            if (isLongPressing) {
-                                isLongPressing = false
-                                onLongPressEnd()
-                            }
+        modifier = Modifier
+            .fillMaxSize()
+            // 手势1：点击和长按
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    // 单击：切换控制栏显示
+                    onTap = { onToggleControls() },
+                    // 长按：开始 3x 倍速
+                    onLongPress = {
+                        isLongPressing = true
+                        onLongPressStart()
+                    },
+                    // 按压：用于检测长按结束
+                    onPress = {
+                        tryAwaitRelease()  // 等待手指抬起
+                        if (isLongPressing) {
+                            isLongPressing = false
+                            onLongPressEnd()
                         }
-                    )
-                }
-                // 手势2：水平滑动调节进度
-                .pointerInput(uiState.duration, uiState.currentPosition) {
-                    detectHorizontalDragGestures(
-                        // 开始拖动
-                        onDragStart = {
-                            isDragging = true
-                            dragTargetPosition = uiState.currentPosition
-                            onSeekStart()  // 通知暂停播放
-                        },
-                        // 结束拖动
-                        onDragEnd = {
-                            if (isDragging) {
-                                val targetPos = dragTargetPosition
-                                isDragging = false
-                                onSeekEnd(targetPos)  // 跳转并恢复播放
-                            }
-                        },
-                        // 取消拖动
-                        onDragCancel = {
-                            if (isDragging) {
-                                isDragging = false
-                                onSeekEnd(null)  // 不跳转，只恢复播放
-                            }
-                        },
-                        // 拖动中
-                        onHorizontalDrag = { _, dragAmount ->
-                            if (uiState.duration > 0) {
-                                // 每滑动 1px 调整 100ms 进度
-                                val seekAmount = (dragAmount * 100).toLong()
-                                dragTargetPosition = (dragTargetPosition + seekAmount)
-                                    .coerceIn(0, uiState.duration)
-                            }
+                    }
+                )
+            }
+            // 手势2：水平滑动调节进度
+            .pointerInput(uiState.duration, uiState.currentPosition) {
+                detectHorizontalDragGestures(
+                    // 开始拖动
+                    onDragStart = {
+                        isDragging = true
+                        dragTargetPosition = uiState.currentPosition
+                        onSeekStart()  // 通知暂停播放
+                    },
+                    // 结束拖动
+                    onDragEnd = {
+                        if (isDragging) {
+                            val targetPos = dragTargetPosition
+                            isDragging = false
+                            onSeekEnd(targetPos)  // 跳转并恢复播放
                         }
-                    )
-                }
-        ) {
+                    },
+                    // 取消拖动
+                    onDragCancel = {
+                        if (isDragging) {
+                            isDragging = false
+                            onSeekEnd(null)  // 不跳转，只恢复播放
+                        }
+                    },
+                    // 拖动中
+                    onHorizontalDrag = { _, dragAmount ->
+                        if (uiState.duration > 0) {
+                            // 每滑动 1px 调整 100ms 进度
+                            val seekAmount = (dragAmount * 100).toLong()
+                            dragTargetPosition = (dragTargetPosition + seekAmount)
+                                .coerceIn(0, uiState.duration)
+                        }
+                    }
+                )
+            }
+    ) {
         // ==================== 视频内容 ====================
         
         // 只有当前页面才渲染视频播放器
@@ -887,7 +887,11 @@ private fun PlayerContent(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(64.dp)  // 圆润的大图标
-                    .clickable(onClick = onTogglePlayPause)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,  // 去掉点击波纹效果
+                        onClick = onTogglePlayPause
+                    )
             )
         }
         
@@ -895,17 +899,17 @@ private fun PlayerContent(
             if (uiState.isLongPressSpeed) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 80.dp)
-                        .clip(RoundedCornerShape(20.dp))
+                        .align(Alignment.TopEnd)
+                        .padding(top = 60.dp, end = 16.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(Color.Black.copy(alpha = 0.7f))
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
-                        text = "${uiState.longPressSpeedValue}x 快进中",
-                        color = Color(0xFFFF6B00),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "${uiState.longPressSpeedValue}x",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -1048,11 +1052,11 @@ private fun PlayerContent(
                                         .clickable { onRetry() }
                                         .padding(horizontal = 24.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
+            ) {
+                Icon(
                                         imageVector = Icons.Default.Refresh,
                                         contentDescription = "重试",
-                                        tint = Color.White,
+                    tint = Color.White,
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -1060,9 +1064,9 @@ private fun PlayerContent(
                                         text = "点击重试",
                                         color = Color.White,
                                         fontSize = 16.sp
-                                    )
-                                }
-                            }
+                )
+            }
+        }
                         }
                     }
                 } else {
@@ -1149,17 +1153,17 @@ private fun PlayerContent(
                 if (uiState.isLongPressSpeed) {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 80.dp)
-                            .clip(RoundedCornerShape(20.dp))
+                            .align(Alignment.TopEnd)
+                            .padding(top = 60.dp, end = 16.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(Color.Black.copy(alpha = 0.7f))
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "${uiState.longPressSpeedValue}x 快进中",
-                            color = Color(0xFFFF6B00),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
+                            text = "${uiState.longPressSpeedValue}x",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -1173,9 +1177,11 @@ private fun PlayerContent(
                         modifier = Modifier
                             .align(Alignment.Center)
                             .size(64.dp)  // 圆润的大图标
-                            .clickable { 
-                                onTogglePlayPause()
-                            }
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,  // 去掉点击波纹效果
+                                onClick = onTogglePlayPause
+                            )
                     )
                 }
             }
@@ -1383,24 +1389,24 @@ private fun PlayerBottomBar(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)  // 统一高度2dp
+                    ) {
+                        // 未完成部分（背景）
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(2.dp)  // 统一高度2dp
-                        ) {
-                            // 未完成部分（背景）
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.White.copy(alpha = 0.3f))
-                            )
-                            // 已完成部分（前景）
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(sliderState.value)
-                                    .fillMaxHeight()
-                                    .background(Color.White)
-                            )
+                                .fillMaxSize()
+                                .background(Color.White.copy(alpha = 0.3f))
+                        )
+                        // 已完成部分（前景）
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(sliderState.value)
+                                .fillMaxHeight()
+                                .background(Color.White)
+                        )
                         }
                     }
                 },
@@ -1452,14 +1458,14 @@ private fun PlayerBottomBar(
             }
             
             // 全屏切换按钮（紧凑版本）
-            Icon(
-                imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                contentDescription = if (isFullscreen) "退出全屏" else "全屏",
+                Icon(
+                    imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                    contentDescription = if (isFullscreen) "退出全屏" else "全屏",
                 tint = Color.White,
                 modifier = Modifier
                     .size(24.dp)  // 增大按钮，更容易点击
                     .clickable(onClick = onToggleFullscreen)
-            )
+                )
         }
     }
 }
