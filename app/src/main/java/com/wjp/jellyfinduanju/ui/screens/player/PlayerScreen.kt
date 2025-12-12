@@ -70,6 +70,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -291,15 +292,22 @@ fun PlayerScreen(
     // ============================================================================
     
     /**
+     * 标记是否正在进行程序化滚动（用于避免双向同步冲突）
+     */
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
+
+    /**
      * 监听 Pager 滑动变化 → 同步到 ViewModel
      * 
      * 用户上下滑动时，pagerState.currentPage 会变化
      * 通过 snapshotFlow 转换为 Flow 并收集
      * 当 page 变化时，通知 ViewModel 切换集数
+     * 
+     * 注意：在程序化滚动期间（从选集对话框切换时），忽略此同步，避免竞态条件
      */
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
-            if (page != uiState.currentEpisodeIndex) {
+            if (!isProgrammaticScroll && page != uiState.currentEpisodeIndex) {
                 viewModel.switchToEpisode(page)
             }
         }
@@ -313,7 +321,9 @@ fun PlayerScreen(
      */
     LaunchedEffect(uiState.currentEpisodeIndex) {
         if (pagerState.currentPage != uiState.currentEpisodeIndex) {
+            isProgrammaticScroll = true
             pagerState.animateScrollToPage(uiState.currentEpisodeIndex)
+            isProgrammaticScroll = false
         }
     }
     
@@ -1520,12 +1530,14 @@ private fun EpisodeSelectorContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    episodes.forEach { episode ->
-                        EpisodeChip(
-                            episode = episode,
-                            isCurrentPlaying = episode.id == currentEpisodeId,
-                            onClick = { onEpisodeClick(episode) }
-                        )
+                    episodes.forEachIndexed { index, episode ->
+                        key(episode.id) {
+                            EpisodeChip(
+                                episode = episode,
+                                isCurrentPlaying = episode.id == currentEpisodeId,
+                                onClick = { onEpisodeClick(episode) }
+                            )
+                        }
                     }
                 }
                 

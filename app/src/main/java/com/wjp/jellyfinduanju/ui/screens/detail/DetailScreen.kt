@@ -55,6 +55,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -589,22 +590,28 @@ private fun SeasonSection(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            episodes.forEach { episode ->
+            episodes.forEachIndexed { index, episode ->
                 val isSelected = selectedEpisodeIds.contains(episode.id)
                 val isSelectable = !isDeleteMode || episode.isCached
                 val isDownloading = downloadingEpisodeIds.contains(episode.id)
                 val isPending = pendingEpisodeIds.contains(episode.id)
                 
-                EpisodeCard(
-                    episode = episode,
-                    isSelected = isSelected,
-                    isInSelectMode = isInSelectMode,
-                    isSelectable = isSelectable,
-                    isDownloading = isDownloading,
-                    isPending = isPending,
-                    onClick = { if (isSelectable || !isInSelectMode) onEpisodeClick(episode) },
-                    onLongClick = { if (!isInSelectMode) onEpisodeLongClick(episode) }
-                )
+                key(episode.id) {
+                    EpisodeCard(
+                        episode = episode,
+                        isSelected = isSelected,
+                        isInSelectMode = isInSelectMode,
+                        isSelectable = isSelectable,
+                        isDownloading = isDownloading,
+                        isPending = isPending,
+                        onClick = { 
+                            if (isSelectable || !isInSelectMode) {
+                                onEpisodeClick(episode)
+                            }
+                        },
+                        onLongClick = { if (!isInSelectMode) onEpisodeLongClick(episode) }
+                    )
+                }
             }
         }
     }

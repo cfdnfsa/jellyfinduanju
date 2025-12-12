@@ -598,7 +598,7 @@ class PlayerViewModel(
      */
     fun loadVideoSource() {
         val episode = uiState.value.currentEpisode ?: return
-        
+
         viewModelScope.launch {
             _uiState.update { it.copy(isVideoLoading = true, videoError = null, hasReportedComplete = false) }
             
