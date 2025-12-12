@@ -3,8 +3,11 @@ package com.wjp.jellyfinduanju
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
+import androidx.compose.ui.unit.dp
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -197,11 +200,20 @@ private fun MainBottomNavigationBar(
         BottomNavItem.Settings
     )
     
-    NavigationBar {
+    NavigationBar(
+        // 简约风格：使用表面色而非容器色，更低调
+        containerColor = MaterialTheme.colorScheme.surface,
+        // 添加细微边框，分隔内容
+        tonalElevation = 0.dp
+    ) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
 
         bottomNavItems.forEach { item ->
+            val isSelected = currentDestination?.hierarchy?.any { 
+                it.route == item.route 
+            } == true
+            
             NavigationBarItem(
                 icon = { 
                     Icon(
@@ -210,9 +222,7 @@ private fun MainBottomNavigationBar(
                     ) 
                 },
                 label = { Text(item.title) },
-                selected = currentDestination?.hierarchy?.any { 
-                    it.route == item.route 
-                } == true,
+                selected = isSelected,
                 onClick = {
                     navController.navigate(item.route) {
                         // 弹出到导航图的起始目的地，避免在底部导航之间创建大量堆栈
@@ -224,7 +234,15 @@ private fun MainBottomNavigationBar(
                         // 重新选择以前选择的项目时恢复其状态
                         restoreState = true
                     }
-                }
+                },
+                // 简约风格配色：黑白灰为主，选中时用翡翠绿点缀
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.primary,  // 选中：翡翠绿
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,  // 指示器：浅绿背景
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,  // 未选中：灰色
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             )
         }
     }
