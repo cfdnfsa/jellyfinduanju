@@ -20,53 +20,54 @@ import androidx.core.view.WindowCompat
  */
 
 /**
- * 深色主题配色方案（极简黑白风格）
+ * 深色主题配色方案（极简克制风格）
  * 
- * 灵感：Apple Music, Spotify
- * 特点：深灰背景 + 翡翠绿强调色 + 极简设计
+ * 特点：接近纯黑背景 + 翡翠绿/天空蓝强调色 + 克制用色
  */
 private val DarkColorScheme = darkColorScheme(
-    // 主色调：翡翠绿（唯一的亮色点缀）
+    // 主色调：翡翠绿（仅在必要时使用）
     primary = MinimalGreen,
     primaryContainer = MinimalGreen.copy(alpha = 0.15f),
-    onPrimary = MinimalBlack,
+    onPrimary = MinimalWhite,
     onPrimaryContainer = MinimalGreenLight,
     
     // 次要色调：天空蓝
     secondary = MinimalBlue,
     secondaryContainer = MinimalBlue.copy(alpha = 0.15f),
-    onSecondary = MinimalBlack,
-    onSecondaryContainer = Color(0xFF7DD3FC),
+    onSecondary = MinimalWhite,
+    onSecondaryContainer = MinimalBlueLight,
     
-    // 第三色调：琥珀色
+    // 第三色调：灰琥珀（警告时使用）
     tertiary = MinimalAmber,
-    tertiaryContainer = MinimalAmber.copy(alpha = 0.15f),
+    tertiaryContainer = MinimalAmber.copy(alpha = 0.12f),
     onTertiary = MinimalBlack,
-    onTertiaryContainer = Color(0xFFFDE68A),
+    onTertiaryContainer = Color(0xFFE8D9C3),
     
-    // 背景色：深灰（不用纯黑，更柔和）
+    // 背景色：接近纯黑（极简）
     background = MinimalDarkBackground,
     onBackground = MinimalTextPrimary,
     
-    // 表面色：卡片、对话框等（略浅于背景）
+    // 表面色：卡片、对话框等（略浅于背景，保持极简）
     surface = MinimalDarkSurface,
     surfaceVariant = MinimalDarkSurfaceVariant,
     onSurface = MinimalTextPrimary,
     onSurfaceVariant = MinimalTextSecondary,
     
-    // 轮廓线颜色
-    outline = MinimalTextTertiary,
-    outlineVariant = Color(0xFF3A3A3A),
+    // 轮廓线颜色（深灰，低调）
+    outline = MinimalBorderDark,
+    outlineVariant = Color(0xFF1F1F1F),
     
-    // 错误色
+    // 错误色（柔和红，不刺眼）
     error = MinimalRed,
     errorContainer = MinimalRed.copy(alpha = 0.15f),
-    onError = MinimalWhite,
-    onErrorContainer = Color(0xFFFECDD3)
+    onError = MinimalBlack,
+    onErrorContainer = Color(0xFFEDD3D3)
 )
 
 /**
- * 浅色主题配色方案（极简黑白风格）
+ * 浅色主题配色方案（极简克制风格）
+ * 
+ * 特点：温暖白色背景 + 黑色文字/图标为主 + 翡翠绿/天空蓝点缀
  */
 private val LightColorScheme = lightColorScheme(
     // 主色调：翡翠绿
@@ -79,33 +80,33 @@ private val LightColorScheme = lightColorScheme(
     secondary = MinimalBlue,
     secondaryContainer = Color(0xFFE0F2FE),
     onSecondary = MinimalWhite,
-    onSecondaryContainer = Color(0xFF075985),
+    onSecondaryContainer = MinimalBlueDark,
     
-    // 第三色调：琥珀色
+    // 第三色调：灰琥珀
     tertiary = MinimalAmber,
-    tertiaryContainer = Color(0xFFFEF3C7),
+    tertiaryContainer = Color(0xFFEEE5D6),
     onTertiary = MinimalBlack,
-    onTertiaryContainer = Color(0xFF78350F),
+    onTertiaryContainer = Color(0xFF6B5D48),
     
-    // 背景色：柔和白
+    // 背景色：温暖的浅灰（不用纯白，更柔和）
     background = MinimalLightBackground,
-    onBackground = MinimalTextPrimaryLight,
+    onBackground = MinimalTextPrimaryLight,  // 纯黑文字
     
-    // 表面色：纯白
+    // 表面色：纯白卡片
     surface = MinimalLightSurface,
     surfaceVariant = MinimalLightSurfaceVariant,
-    onSurface = MinimalTextPrimaryLight,
-    onSurfaceVariant = MinimalTextSecondaryLight,
+    onSurface = MinimalTextPrimaryLight,  // 纯黑文字
+    onSurfaceVariant = MinimalTextSecondaryLight,  // 深灰文字
     
-    // 轮廓线颜色
-    outline = MinimalTextTertiaryLight,
-    outlineVariant = Color(0xFFE5E5E5),
+    // 轮廓线颜色（浅灰，低调）
+    outline = MinimalBorderLight,
+    outlineVariant = Color(0xFFF0F0F0),
     
-    // 错误色
+    // 错误色（柔和红）
     error = MinimalRed,
-    errorContainer = Color(0xFFFEE2E2),
-    onError = MinimalWhite,
-    onErrorContainer = Color(0xFF7F1D1D)
+    errorContainer = Color(0xFFF5E5E5),
+    onError = MinimalBlack,
+    onErrorContainer = Color(0xFF8B6666)
 )
 
 /**
@@ -140,11 +141,15 @@ fun JellyfinDuanjuTheme(
         SideEffect {
             // 获取当前 Activity 的 Window
             val window = (view.context as Activity).window
-            // 设置状态栏背景色为主题背景色
-            window.statusBarColor = colorScheme.background.toArgb()
+            // 保持状态栏透明（支持边到边显示）
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
             // 设置状态栏图标/文字的颜色模式
-            // 深色主题时使用浅色图标，浅色主题时使用深色图标
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            // 深色主题时使用浅色图标，浅色主题时使用深色图标（黑色线条风格）
+            val insetsController = WindowCompat.getInsetsController(window, view)
+            insetsController.isAppearanceLightStatusBars = !darkTheme
+            
+            // 确保内容延伸到系统栏（边到边显示）
+            WindowCompat.setDecorFitsSystemWindows(window, false)
         }
     }
 

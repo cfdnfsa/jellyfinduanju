@@ -124,7 +124,7 @@ private fun SettingsContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 26.dp, bottom = 16.dp)
     ) {
         // ==================== 账号信息卡片 ====================
         
