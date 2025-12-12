@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -196,7 +197,8 @@ private fun DetailScreenContent(
                 onConfirmAction = if (uiState.isCacheSelectMode) onCacheSelected else onDeleteSelected
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)  // 禁用Scaffold的自动系统栏padding，实现边到边效果
     ) { paddingValues ->
         if (uiState.isLoading && uiState.seasons.isEmpty()) {
             // 首次加载

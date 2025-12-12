@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -87,7 +88,8 @@ fun DownloadScreen(
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
-        }
+        },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)  // 禁用Scaffold的自动系统栏padding，实现边到边效果
     ) { paddingValues ->
         if (uiState.isLoading) {
             Box(

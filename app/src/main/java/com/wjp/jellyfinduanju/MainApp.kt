@@ -1,5 +1,6 @@
 package com.wjp.jellyfinduanju
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -171,7 +172,8 @@ private fun MainContent() {
             if (shouldShowBottomBar) {
                 MainBottomNavigationBar(navController = navController)
             }
-        }
+        },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)  // 禁用Scaffold的自动系统栏padding，实现边到边效果
     ) { innerPadding ->
         MainNavHost(
             navController = navController,

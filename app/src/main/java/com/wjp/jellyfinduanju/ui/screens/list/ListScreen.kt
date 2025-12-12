@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -181,11 +182,11 @@ private fun ListScreenContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(end = 8.dp),
-                        placeholder = { 
+                        placeholder = {
                             Text(
                                 "搜索剧集...",
                                 style = MaterialTheme.typography.bodyMedium
-                            ) 
+                            )
                         },
                         leadingIcon = {
                             Icon(
@@ -467,7 +468,6 @@ private fun ListScreenContent(
  * 
  * 横向滚动显示所有可用标签
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TagFilterBar(
     allTags: List<String>,
@@ -475,7 +475,7 @@ private fun TagFilterBar(
     onTagSelected: (String) -> Unit
 ) {
     // 系统标签列表（用于判断标签类型）
-    val systemTags = listOf("全部", "已缓存", "未缓存")
+    listOf("全部", "已缓存", "未缓存")
     val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
     
     LazyRow(
