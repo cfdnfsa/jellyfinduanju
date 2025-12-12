@@ -72,7 +72,8 @@ import com.wjp.jellyfinduanju.data.model.DownloadTask
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadScreen(
-    viewModel: DownloadViewModel
+    viewModel: DownloadViewModel,
+    onNavigateToDetail: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     
@@ -212,6 +213,7 @@ fun DownloadScreen(
                     items(uiState.completedGroups, key = { it.seriesId }) { group ->
                         CompletedSeriesItem(
                             group = group,
+                            onNavigateToDetail = { onNavigateToDetail(group.seriesId) },
                             onDeleteEpisode = { task ->
                                 showDeleteDialog = DeleteDialogState.DeleteEpisode(task)
                             },
@@ -490,6 +492,7 @@ private fun FailedTaskItem(
 @Composable
 private fun CompletedSeriesItem(
     group: CompletedSeriesGroup,
+    onNavigateToDetail: () -> Unit,
     onDeleteEpisode: (DownloadTask) -> Unit,
     onDeleteSeries: () -> Unit
 ) {
@@ -510,11 +513,14 @@ private fun CompletedSeriesItem(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onNavigateToDetail() }
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = group.seriesName,
@@ -556,11 +562,13 @@ private fun CompletedSeriesItem(
                 }
                 
                 // 展开/收起
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "收起" else "展开",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                IconButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "收起" else "展开",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             
             // 展开的剧集列表

@@ -284,7 +284,12 @@ private fun MainNavHost(
                     JellyfinApp.instance.episodeDataStore
                 )
             )
-            DownloadScreen(viewModel = downloadViewModel)
+            DownloadScreen(
+                viewModel = downloadViewModel,
+                onNavigateToDetail = { seriesId ->
+                    navController.navigate(Routes.seriesDetail(seriesId))
+                }
+            )
         }
         
         // 设置页
