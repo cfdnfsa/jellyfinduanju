@@ -427,7 +427,9 @@ class DetailRepository(
         if (imageTag == null) return null
         
         val serverConfig = authRepository.serverConfig.first() ?: return null
-        return "${serverConfig.serverUrl}/Items/$itemId/Images/Primary?tag=$imageTag"
+        // 使用当前激活的服务器地址（支持主备切换）
+        val activeServerUrl = authRepository.getActiveServerUrl() ?: serverConfig.serverUrl
+        return "${activeServerUrl}/Items/$itemId/Images/Primary?tag=$imageTag"
     }
     
     // ==================== 获取视频流 URL ====================
@@ -445,9 +447,12 @@ class DetailRepository(
         val serverConfig = authRepository.serverConfig.first() ?: return null
         val userSession = authRepository.userSession.first() ?: return null
         
+        // 使用当前激活的服务器地址（支持主备切换）
+        val activeServerUrl = authRepository.getActiveServerUrl() ?: serverConfig.serverUrl
+        
         // Jellyfin 视频流 URL
         // Static=true 表示直接传输原始文件，不进行转码
-        return "${serverConfig.serverUrl}/Videos/$episodeId/stream?Static=true&api_key=${userSession.accessToken}"
+        return "${activeServerUrl}/Videos/$episodeId/stream?Static=true&api_key=${userSession.accessToken}"
     }
     
     /**
@@ -460,8 +465,11 @@ class DetailRepository(
         val serverConfig = authRepository.serverConfig.first() ?: return emptyMap()
         val userSession = authRepository.userSession.first() ?: return emptyMap()
         
+        // 使用当前激活的服务器地址（支持主备切换）
+        val activeServerUrl = authRepository.getActiveServerUrl() ?: serverConfig.serverUrl
+        
         return episodeIds.associateWith { episodeId ->
-            "${serverConfig.serverUrl}/Videos/$episodeId/stream?Static=true&api_key=${userSession.accessToken}"
+            "${activeServerUrl}/Videos/$episodeId/stream?Static=true&api_key=${userSession.accessToken}"
         }
     }
     

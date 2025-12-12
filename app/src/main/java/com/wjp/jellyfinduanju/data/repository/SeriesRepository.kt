@@ -271,7 +271,9 @@ class SeriesRepository(
                 
                 // 下载图片（异步进行，不阻塞返回）
                 val itemsForImageDownload = allServerItems.map { it.first }
-                downloadSeriesImages(serverConfig.serverUrl, itemsForImageDownload)
+                // 使用当前激活的服务器地址（支持主备切换）
+                val activeServerUrl = authRepository.getActiveServerUrl() ?: serverConfig.serverUrl
+                downloadSeriesImages(activeServerUrl, itemsForImageDownload)
                 
                 // 获取已从服务器删除但本地有缓存的剧集
                 val deletedButCachedSeries = itemsNotOnServer.mapNotNull { itemId ->
@@ -470,8 +472,11 @@ class SeriesRepository(
         val serverConfig = authRepository.serverConfig.first() ?: return@withContext null
         val series = seriesDataStore.getSeries(seriesId) ?: return@withContext null
         
+        // 使用当前激活的服务器地址（支持主备切换）
+        val activeServerUrl = authRepository.getActiveServerUrl() ?: serverConfig.serverUrl
+        
         ImageCacheUtils.getRemoteImageUrl(
-            serverUrl = serverConfig.serverUrl,
+            serverUrl = activeServerUrl,
             itemId = seriesId,
             imageTag = series.primaryImageTag
         )

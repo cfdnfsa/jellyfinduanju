@@ -22,8 +22,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Label
@@ -93,7 +91,6 @@ fun SettingsScreen(
         onLogoutCancel = { viewModel.hideLogoutDialog() },
         // 备用服务器相关
         onAddSecondaryServerClick = { viewModel.showSecondaryServerDialog() },
-        onEditSecondaryServerClick = { viewModel.showSecondaryServerDialog() },
         onDeleteSecondaryServerClick = { viewModel.deleteSecondaryServerUrl() },
         onToggleServerClick = { viewModel.toggleActiveServer() },
         onSecondaryUrlChange = { viewModel.updateEditingSecondaryUrl(it) },
@@ -117,7 +114,6 @@ private fun SettingsContent(
     onLogoutCancel: () -> Unit,
     // 备用服务器相关
     onAddSecondaryServerClick: () -> Unit,
-    onEditSecondaryServerClick: () -> Unit,
     onDeleteSecondaryServerClick: () -> Unit,
     onToggleServerClick: () -> Unit,
     onSecondaryUrlChange: (String) -> Unit,
@@ -185,7 +181,11 @@ private fun SettingsContent(
                     Icon(
                         imageVector = Icons.Default.Cloud,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
+                        tint = if (uiState.activeServerIndex == 0) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.secondary
+                        },
                         modifier = Modifier.size(40.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
@@ -196,25 +196,20 @@ private fun SettingsContent(
                             fontWeight = FontWeight.Bold
                         )
                         // 主服务器地址
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (uiState.activeServerIndex == 0) {
-                                Text(
-                                    text = "当前",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(end = 4.dp)
-                                )
+                        Text(
+                            text = uiState.serverConfig?.serverUrl ?: "-",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (uiState.activeServerIndex == 0) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            fontWeight = if (uiState.activeServerIndex == 0) {
+                                FontWeight.SemiBold
+                            } else {
+                                FontWeight.Normal
                             }
-                            Text(
-                                text = "主: ${uiState.serverConfig?.serverUrl ?: "-"}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (uiState.activeServerIndex == 0) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
-                        }
+                        )
                     }
                 }
                 
@@ -226,43 +221,30 @@ private fun SettingsContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Home,
+                            imageVector = Icons.Default.Cloud,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.tertiary,
+                            tint = if (uiState.activeServerIndex == 1) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.secondary
+                            },
                             modifier = Modifier.size(40.dp)
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (uiState.activeServerIndex == 1) {
-                                    Text(
-                                        text = "当前",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(end = 4.dp)
-                                    )
+                            Text(
+                                text = uiState.secondaryServerUrl,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (uiState.activeServerIndex == 1) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                fontWeight = if (uiState.activeServerIndex == 1) {
+                                    FontWeight.SemiBold
+                                } else {
+                                    FontWeight.Normal
                                 }
-                                Text(
-                                    text = "备用: ${uiState.secondaryServerUrl}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (uiState.activeServerIndex == 1) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                            }
-                        }
-                        // 编辑按钮
-                        IconButton(
-                            onClick = onEditSecondaryServerClick,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "编辑",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
                             )
                         }
                         // 删除按钮
@@ -298,9 +280,7 @@ private fun SettingsContent(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (uiState.activeServerIndex == 0) "切换到备用" else "切换到主"
-                            )
+                            Text("切换")
                         }
                     }
                     
@@ -614,9 +594,7 @@ private fun SettingsContent(
         AlertDialog(
             onDismissRequest = onCancelSecondaryServer,
             title = { 
-                Text(
-                    if (uiState.secondaryServerUrl != null) "编辑备用地址" else "添加备用地址"
-                ) 
+                Text("添加备用地址") 
             },
             text = {
                 Column {
@@ -630,7 +608,7 @@ private fun SettingsContent(
                         value = uiState.editingSecondaryUrl,
                         onValueChange = onSecondaryUrlChange,
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("") },
+                        placeholder = { Text("http://192.168.1.100:8096") },
                         singleLine = true
                     )
                 }
