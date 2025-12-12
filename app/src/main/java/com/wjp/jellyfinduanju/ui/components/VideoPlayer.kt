@@ -119,8 +119,8 @@ fun VideoPlayer(
         }
     }
     
-    // 播放器事件监听
-    DisposableEffect(exoPlayer) {
+    // 播放器事件监听（依赖所有回调函数，确保捕获最新的引用）
+    DisposableEffect(exoPlayer, onPlaybackStateChanged, onPlayerReady, onSeekComplete, onBufferingChanged, onVideoEnded) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {

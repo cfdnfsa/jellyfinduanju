@@ -484,7 +484,8 @@ fun PlayerScreen(
                         }
                     },
                     onVideoEnded = {
-                        if (isCurrentPage) {
+                        // 实时检查是否为当前页面，避免闭包捕获旧值
+                        if (page == pagerState.currentPage) {
                             viewModel.onVideoEnded()
                         }
                     },
