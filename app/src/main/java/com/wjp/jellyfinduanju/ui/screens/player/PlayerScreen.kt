@@ -302,15 +302,14 @@ fun PlayerScreen(
 
     /**
      * 监听 Pager 滑动变化 → 同步到 ViewModel
-     * 
-     * 用户上下滑动时，pagerState.currentPage 会变化
-     * 通过 snapshotFlow 转换为 Flow 并收集
-     * 当 page 变化时，通知 ViewModel 切换集数
-     * 
+     *
+     * 使用 settledPage 而不是 currentPage，确保页面完全停止后再切换视频
+     * 这样可以避免在滑动过程中切换视频源导致的问题
+     *
      * 注意：在程序化滚动期间（从选集对话框切换时），忽略此同步，避免竞态条件
      */
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.currentPage }.collect { page ->
+        snapshotFlow { pagerState.settledPage }.collect { page ->
             if (!isProgrammaticScroll && page != uiState.currentEpisodeIndex) {
                 // 滑动视频前强制保存进度
                 viewModel.forceSaveProgress()
@@ -688,20 +687,23 @@ private fun PlayerContent(
         if (isCurrentPage) {
             if (uiState.currentVideoUri != null) {
                 // 视频播放器
-                VideoPlayer(
-                    exoPlayer = exoPlayer,
-                    videoUri = uiState.currentVideoUri,
-                    isPlaying = uiState.isPlaying,
-                    playbackSpeed = uiState.actualSpeed,
-                    seekToPosition = uiState.seekToPosition,
-                    isFullscreen = uiState.isFullscreen,
-                    onProgressChanged = onProgressChanged,
-                    onPlaybackStateChanged = onPlaybackStateChanged,
-                    onSeekComplete = onSeekComplete,
-                    onBufferingChanged = onBufferingChanged,
-                    onVideoEnded = onVideoEnded,
-                    modifier = Modifier.fillMaxSize()
-                )
+                // 使用 episode.id 作为 key，确保切换集数时重新创建 VideoPlayer
+                key(episode.id) {
+                    VideoPlayer(
+                        exoPlayer = exoPlayer,
+                        videoUri = uiState.currentVideoUri,
+                        isPlaying = uiState.isPlaying,
+                        playbackSpeed = uiState.actualSpeed,
+                        seekToPosition = uiState.seekToPosition,
+                        isFullscreen = uiState.isFullscreen,
+                        onProgressChanged = onProgressChanged,
+                        onPlaybackStateChanged = onPlaybackStateChanged,
+                        onSeekComplete = onSeekComplete,
+                        onBufferingChanged = onBufferingChanged,
+                        onVideoEnded = onVideoEnded,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
                 
                 // 缓冲指示器（视频加载中显示）
                 if (uiState.isBuffering) {
@@ -999,20 +1001,23 @@ private fun PlayerContent(
                 if (isCurrentPage) {
                     if (uiState.currentVideoUri != null) {
                         // 视频播放器
-                        VideoPlayer(
-                            exoPlayer = exoPlayer,
-                            videoUri = uiState.currentVideoUri,
-                            isPlaying = uiState.isPlaying,
-                            playbackSpeed = uiState.actualSpeed,
-                            seekToPosition = uiState.seekToPosition,
-                            isFullscreen = uiState.isFullscreen,
-                            onProgressChanged = onProgressChanged,
-                            onPlaybackStateChanged = onPlaybackStateChanged,
-                            onSeekComplete = onSeekComplete,
-                            onBufferingChanged = onBufferingChanged,
-                            onVideoEnded = onVideoEnded,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        // 使用 episode.id 作为 key，确保切换集数时重新创建 VideoPlayer
+                        key(episode.id) {
+                            VideoPlayer(
+                                exoPlayer = exoPlayer,
+                                videoUri = uiState.currentVideoUri,
+                                isPlaying = uiState.isPlaying,
+                                playbackSpeed = uiState.actualSpeed,
+                                seekToPosition = uiState.seekToPosition,
+                                isFullscreen = uiState.isFullscreen,
+                                onProgressChanged = onProgressChanged,
+                                onPlaybackStateChanged = onPlaybackStateChanged,
+                                onSeekComplete = onSeekComplete,
+                                onBufferingChanged = onBufferingChanged,
+                                onVideoEnded = onVideoEnded,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                         
                         // 缓冲指示器
                         if (uiState.isBuffering) {
