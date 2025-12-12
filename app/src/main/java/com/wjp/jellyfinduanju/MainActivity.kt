@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.wjp.jellyfinduanju.ui.theme.JellyfinDuanjuTheme
 
 /**
@@ -24,6 +27,17 @@ class MainActivity : ComponentActivity() {
         // 启用边到边显示（Edge-to-Edge）
         // 这会让应用内容延伸到状态栏和导航栏区域，实现沉浸式体验
         enableEdgeToEdge()
+        
+        // 全局隐藏导航栏（底部系统栏）
+        window?.let { window ->
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            // 隐藏导航栏
+            controller.hide(WindowInsetsCompat.Type.navigationBars())
+            // 设置手势模式（从边缘滑动可以临时显示）
+            controller.systemBarsBehavior = 
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         
         // setContent 是 Compose 的入口点
         // 在这里定义整个应用的 UI 内容

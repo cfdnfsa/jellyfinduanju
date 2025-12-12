@@ -157,6 +157,13 @@ private fun MainContent() {
         currentRoute.startsWith("player/") -> false  // 播放页面也隐藏底部栏
         else -> true
     }
+    
+    // 播放器页面需要延伸到状态栏，不能应用 innerPadding
+    val shouldApplyPadding = when {
+        currentRoute == null -> true
+        currentRoute.startsWith("player/") -> false  // 播放页面不应用padding
+        else -> true
+    }
 
     Scaffold(
         bottomBar = {
@@ -168,7 +175,7 @@ private fun MainContent() {
     ) { innerPadding ->
         MainNavHost(
             navController = navController,
-            modifier = Modifier.padding(innerPadding)
+            modifier = if (shouldApplyPadding) Modifier.padding(innerPadding) else Modifier
         )
     }
 }

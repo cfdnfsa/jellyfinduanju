@@ -55,6 +55,7 @@ fun VideoPlayer(
     isPlaying: Boolean,
     playbackSpeed: Float = 1.0f,
     seekToPosition: Long? = null,
+    isFullscreen: Boolean = false,
     onPlaybackStateChanged: (Boolean) -> Unit = {},
     onProgressChanged: (currentPosition: Long, duration: Long) -> Unit = { _, _ -> },
     onPlayerReady: () -> Unit = {},
@@ -66,10 +67,19 @@ fun VideoPlayer(
     // 记录当前播放的 URI
     var currentUri by remember { mutableStateOf("") }
     
+    // 视频是否为竖屏视频
+    var isVerticalVideo by remember { mutableStateOf(false) }
+    
+    // 缓冲超时检测
+    var bufferingStartTime by remember { mutableStateOf(0L) }
+    var isBufferingNow by remember { mutableStateOf(false) }
+    
     // 当 videoUri 变化时，切换视频
     LaunchedEffect(videoUri) {
         if (videoUri.isNotEmpty() && videoUri != currentUri) {
             currentUri = videoUri
+            bufferingStartTime = 0L
+            isBufferingNow = false
             
             // 判断是本地文件还是网络 URL
             val uri = if (videoUri.startsWith("/") || videoUri.startsWith("file://")) {
@@ -109,10 +119,16 @@ fun VideoPlayer(
                 when (playbackState) {
                     Player.STATE_READY -> {
                         onBufferingChanged(false)
+                        isBufferingNow = false
+                        bufferingStartTime = 0L
                         onPlayerReady()
                     }
                     Player.STATE_BUFFERING -> {
                         onBufferingChanged(true)
+                        if (!isBufferingNow) {
+                            isBufferingNow = true
+                            bufferingStartTime = System.currentTimeMillis()
+                        }
                     }
                     Player.STATE_ENDED -> {
                         onPlaybackStateChanged(false)
@@ -120,12 +136,20 @@ fun VideoPlayer(
                     }
                     Player.STATE_IDLE -> {
                         onBufferingChanged(false)
+                        isBufferingNow = false
+                        bufferingStartTime = 0L
                     }
                 }
             }
             
             override fun onIsPlayingChanged(playing: Boolean) {
                 onPlaybackStateChanged(playing)
+            }
+            
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                // 判断视频是横屏还是竖屏
+                // 高度 >= 宽度 = 竖屏视频
+                isVerticalVideo = videoSize.height >= videoSize.width
             }
         }
         
@@ -136,12 +160,35 @@ fun VideoPlayer(
         }
     }
     
-    // 定时更新进度
+    // 定时更新进度 + 缓冲超时检测
     LaunchedEffect(exoPlayer) {
         while (true) {
             if (exoPlayer.isPlaying) {
                 onProgressChanged(exoPlayer.currentPosition, exoPlayer.duration.coerceAtLeast(0))
             }
+            
+            // 缓冲超时检测：如果缓冲超过 15 秒，尝试恢复
+            if (isBufferingNow && bufferingStartTime > 0) {
+                val bufferingDuration = System.currentTimeMillis() - bufferingStartTime
+                if (bufferingDuration > 15_000) { // 15 秒超时
+                    // 记录当前播放位置
+                    val currentPos = exoPlayer.currentPosition
+                    
+                    // 重新准备播放器（不改变 MediaItem）
+                    try {
+                        exoPlayer.stop()
+                        exoPlayer.prepare()
+                        exoPlayer.seekTo(currentPos)
+                        exoPlayer.playWhenReady = isPlaying
+                    } catch (_: Exception) {
+                        // 如果恢复失败，重置状态
+                    }
+                    
+                    // 重置缓冲计时
+                    bufferingStartTime = System.currentTimeMillis()
+                }
+            }
+            
             kotlinx.coroutines.delay(500)  // 每 500ms 更新一次
         }
     }
@@ -156,14 +203,21 @@ fun VideoPlayer(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
-                // 设置视频填充模式
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             }
         },
         update = { playerView ->
             // 确保 PlayerView 使用正确的 ExoPlayer 实例
             if (playerView.player != exoPlayer) {
                 playerView.player = exoPlayer
+            }
+            
+            // 根据屏幕方向和视频方向动态设置缩放模式
+            playerView.resizeMode = if (!isFullscreen && isVerticalVideo) {
+                // 竖屏模式 + 竖屏视频 → 裁剪填充
+                AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            } else {
+                // 其他所有情况 → 完整显示
+                AspectRatioFrameLayout.RESIZE_MODE_FIT
             }
         },
         modifier = modifier

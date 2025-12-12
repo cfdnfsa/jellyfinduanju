@@ -1,7 +1,10 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.wjp.jellyfinduanju.ui.screens.player
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
@@ -64,6 +68,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.SideEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -71,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -130,10 +136,7 @@ fun PlayerScreen(
     /** 获取 Activity 用于控制屏幕方向和系统 UI */
     val context = LocalContext.current
     val activity = context as? Activity
-    
-    /** 协程作用域，用于启动协程 */
-    val coroutineScope = rememberCoroutineScope()
-    
+
     /**
      * 创建单一的 ExoPlayer 实例
      * 
@@ -189,10 +192,26 @@ fun PlayerScreen(
     // ============================================================================
     
     /**
+     * 设置状态栏为透明，文字为白色
+     * 
+     * 使用 SideEffect 确保每次重组时都应用颜色
+     */
+    SideEffect {
+        activity?.window?.let { window ->
+            // 设置状态栏背景为透明
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            // 设置状态栏图标为浅色（白色）
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.isAppearanceLightStatusBars = false
+        }
+    }
+    
+    /**
      * 系统 UI 控制（状态栏和导航栏）
      * 
      * 竖屏模式：
-     * - 使用默认系统行为（内容不延伸到状态栏）
+     * - 内容延伸到状态栏下方（视频铺满全屏）
+     * - 显示透明状态栏（文字白色）
      * - 隐藏底部导航栏
      * 
      * 横屏模式：
@@ -210,8 +229,8 @@ fun PlayerScreen(
                 controller.systemBarsBehavior = 
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } else {
-                // 竖屏模式：使用默认行为，只隐藏导航栏
-                WindowCompat.setDecorFitsSystemWindows(window, true)
+                // 竖屏模式：内容延伸到状态栏，显示透明状态栏，隐藏导航栏
+                WindowCompat.setDecorFitsSystemWindows(window, false)
                 controller.show(WindowInsetsCompat.Type.statusBars())
                 controller.hide(WindowInsetsCompat.Type.navigationBars())
                 controller.systemBarsBehavior = 
@@ -220,13 +239,45 @@ fun PlayerScreen(
         }
     }
     
+    /**
+     * 播放时保持屏幕常亮，暂停时允许锁屏
+     * 
+     * 使用 FLAG_KEEP_SCREEN_ON 标志：
+     * - 播放时：添加标志，屏幕保持常亮
+     * - 暂停时：移除标志，允许系统进入锁屏
+     */
+    LaunchedEffect(uiState.isPlaying) {
+        activity?.window?.let { window ->
+            if (uiState.isPlaying) {
+                // 播放时保持屏幕常亮
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                // 暂停时清除标志，允许锁屏
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
+    
+    /**
+     * 退出时清理资源
+     * 
+     * 1. 恢复系统栏显示
+     * 2. 恢复状态栏颜色
+     * 3. 清除屏幕常亮标志
+     */
     DisposableEffect(activity) {
         onDispose {
-            // 退出时恢复所有系统栏
             activity?.window?.let { window ->
+                // 恢复所有系统栏
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 controller.show(WindowInsetsCompat.Type.systemBars())
                 WindowCompat.setDecorFitsSystemWindows(window, true)
+                
+                // 恢复状态栏颜色为透明（让主题决定）
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                
+                // 清除屏幕常亮标志
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
         }
     }
@@ -615,6 +666,7 @@ private fun PlayerContent(
                     isPlaying = uiState.isPlaying,
                     playbackSpeed = uiState.actualSpeed,
                     seekToPosition = uiState.seekToPosition,
+                    isFullscreen = uiState.isFullscreen,
                     onProgressChanged = onProgressChanged,
                     onPlaybackStateChanged = onPlaybackStateChanged,
                     onSeekComplete = onSeekComplete,
@@ -780,7 +832,7 @@ private fun PlayerContent(
             // 顶部控制栏
             PlayerTopBar(
                 seriesName = uiState.series.name,
-                episodeTitle = "第${episode.episodeNumber}集 ${episode.name}",
+                episodeTitle = "第${episode.episodeNumber}集",
                 playbackSpeed = uiState.playbackSpeed,
                 isFullscreen = uiState.isFullscreen,
                 onBack = onBack,
@@ -788,7 +840,6 @@ private fun PlayerContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopStart)
-                    .padding(top = 16.dp)  // 标题往下 16dp
             )
             
             // 底部渐变遮罩（从透明到黑）
@@ -884,7 +935,16 @@ private fun PlayerTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp),
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.6f),  // 顶部深色
+                        Color.Transparent  // 底部透明
+                    )
+                )
+            )
+            .padding(horizontal = 8.dp)
+            .padding(top = 28.dp, bottom = 16.dp),  // 再往下移8dp
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 返回按钮
@@ -896,44 +956,27 @@ private fun PlayerTopBar(
             )
         }
         
-        // 标题区域
-        Column(
+        // 集数标题（只显示集数，不显示剧名）
+        Text(
+            text = episodeTitle,
+            color = Color.White,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
             modifier = Modifier.weight(1f)
-        ) {
-            // 剧名
-            Text(
-                text = seriesName,
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1
-            )
-            // 集数标题
-            Text(
-                text = episodeTitle,
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 12.sp,
-                maxLines = 1
-            )
-        }
+        )
         
         Spacer(modifier = Modifier.width(8.dp))
         
-        // 倍速按钮
-        Row(
+        // 倍速按钮（纯文字，无背景）
+        Text(
+            text = if (playbackSpeed == 1.0f) "倍速" else "${playbackSpeed}x",
+            color = Color.White,
+            fontSize = 14.sp,
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.White.copy(alpha = 0.2f))
                 .clickable(onClick = onSpeedClick)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (playbackSpeed == 1.0f) "倍速" else "${playbackSpeed}x",
-                color = Color.White,
-                fontSize = 13.sp
-            )
-        }
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+        )
     }
 }
 
@@ -992,24 +1035,24 @@ private fun PlayerBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = horizontalPadding)
-            .padding(top = 44.dp, bottom = 0.dp)
+            .padding(top = 50.dp, bottom = 0.dp)  // 增加 top padding，整体往下移
     ) {
         // ==================== 进度条行 ====================
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(24.dp),  // 增加高度让文字完整显示
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom  // 底部对齐，确保视觉水平
         ) {
             // 当前时间（拖动时高亮）
             Text(
                 text = displayPositionText,
                 color = if (isSliderDragging) Color(0xFFFF6B00) else Color.White,
                 fontSize = if (isSliderDragging) 14.sp else 12.sp,
-                fontWeight = if (isSliderDragging) FontWeight.Bold else FontWeight.Normal
+                fontWeight = if (isSliderDragging) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier.padding(bottom = 2.dp)  // 微调对齐
             )
             
-            // 进度条 Slider
+            // 进度条 Slider（抖音/快手风格）
             Slider(
                 value = displayProgress,
                 onValueChange = { progress ->
@@ -1035,14 +1078,35 @@ private fun PlayerBottomBar(
                     thumbColor = if (isSliderDragging) Color(0xFFFF6B00) else Color.White,
                     activeTrackColor = Color(0xFFFF6B00),
                     inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                )
+                ),
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        modifier = Modifier.height(2.dp),  // 极细轨道
+                        colors = SliderDefaults.colors(
+                            activeTrackColor = Color(0xFFFF6B00),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        )
+                    )
+                },
+                thumb = {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)  // 小圆点滑块
+                            .background(
+                                color = if (isSliderDragging) Color(0xFFFF6B00) else Color.White,
+                                shape = CircleShape
+                            )
+                    )
+                }
             )
             
             // 总时长
             Text(
                 text = durationText,
                 color = Color.White,
-                fontSize = 12.sp
+                fontSize = 12.sp,
+                modifier = Modifier.padding(bottom = 2.dp)  // 微调对齐
             )
         }
         
