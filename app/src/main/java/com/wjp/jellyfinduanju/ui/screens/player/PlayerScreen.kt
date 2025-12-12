@@ -263,12 +263,16 @@ fun PlayerScreen(
     /**
      * 退出时清理资源
      * 
-     * 1. 恢复系统栏显示
-     * 2. 恢复状态栏颜色
-     * 3. 清除屏幕常亮标志
+     * 1. 强制保存进度（应用退出或进入后台）
+     * 2. 恢复系统栏显示
+     * 3. 恢复状态栏颜色
+     * 4. 清除屏幕常亮标志
      */
     DisposableEffect(activity) {
         onDispose {
+            // 退出时强制保存进度（必须保存）
+            viewModel.forceSaveProgress(mustSave = true)
+            
             activity?.window?.let { window ->
                 // 恢复所有系统栏
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
@@ -308,6 +312,8 @@ fun PlayerScreen(
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
             if (!isProgrammaticScroll && page != uiState.currentEpisodeIndex) {
+                // 滑动视频前强制保存进度
+                viewModel.forceSaveProgress()
                 viewModel.switchToEpisode(page)
             }
         }
@@ -337,7 +343,7 @@ fun PlayerScreen(
      * 优先级：
      * 1. 横屏模式 → 先退出全屏（变回竖屏）
      * 2. 选集弹窗打开 → 关闭弹窗
-     * 3. 其他情况 → 退出播放页面
+     * 3. 其他情况 → 强制保存进度并退出播放页面
      */
     BackHandler {
         if (uiState.isFullscreen) {
@@ -346,6 +352,8 @@ fun PlayerScreen(
         } else if (uiState.showEpisodeSelector) {
             viewModel.hideEpisodeSelector()
         } else {
+            // 返回前强制保存进度（必须保存）
+            viewModel.forceSaveProgress(mustSave = true)
             onBack()
         }
     }
@@ -440,6 +448,8 @@ fun PlayerScreen(
                             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                             viewModel.setFullscreen(false)
                         } else {
+                            // 返回前强制保存进度（必须保存）
+                            viewModel.forceSaveProgress(mustSave = true)
                             onBack()
                         }
                     },
@@ -512,6 +522,8 @@ fun PlayerScreen(
                 episodesBySeasonId = uiState.episodesBySeasonId,
                 currentEpisodeId = uiState.currentEpisode?.id,
                 onEpisodeClick = { episode ->
+                    // 从选集切换前强制保存进度（必须保存）
+                    viewModel.forceSaveProgress(mustSave = true)
                     viewModel.switchToEpisode(episode.id)
                     viewModel.hideEpisodeSelector()
                 }

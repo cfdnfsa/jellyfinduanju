@@ -493,14 +493,6 @@ private fun SettingsContent(
                     color = MaterialTheme.colorScheme.outlineVariant
                 )
                 
-                // 进度上报间隔
-                NumberInputSettingItem(
-                    icon = Icons.Default.CloudUpload,
-                    title = "进度上报间隔",
-                    subtitle = "0为不上报，最小10秒",
-                    currentValue = AppSettings.reportInterval,
-                    onValueChange = { AppSettings.reportInterval = it }
-                )
             }
         }
         

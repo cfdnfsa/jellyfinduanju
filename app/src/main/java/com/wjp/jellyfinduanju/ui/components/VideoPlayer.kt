@@ -74,6 +74,9 @@ fun VideoPlayer(
     var bufferingStartTime by remember { mutableStateOf(0L) }
     var isBufferingNow by remember { mutableStateOf(false) }
     
+    // 待执行的 seek 位置（用于等待 READY 状态后再清空）
+    var pendingSeekPosition by remember { mutableStateOf<Long?>(null) }
+    
     // 当 videoUri 变化时，切换视频
     LaunchedEffect(videoUri) {
         if (videoUri.isNotEmpty() && videoUri != currentUri) {
@@ -104,11 +107,11 @@ fun VideoPlayer(
         exoPlayer.setPlaybackSpeed(playbackSpeed)
     }
     
-    // 处理跳转
+    // 处理跳转（但不立即清空，等待 READY 状态）
     LaunchedEffect(seekToPosition) {
         seekToPosition?.let { position ->
+            pendingSeekPosition = position
             exoPlayer.seekTo(position)
-            onSeekComplete()
         }
     }
     
@@ -122,6 +125,12 @@ fun VideoPlayer(
                         isBufferingNow = false
                         bufferingStartTime = 0L
                         onPlayerReady()
+                        
+                        // 如果有待执行的 seek，现在清空（避免重复加载时丢失进度）
+                        if (pendingSeekPosition != null) {
+                            pendingSeekPosition = null
+                            onSeekComplete()
+                        }
                     }
                     Player.STATE_BUFFERING -> {
                         onBufferingChanged(true)

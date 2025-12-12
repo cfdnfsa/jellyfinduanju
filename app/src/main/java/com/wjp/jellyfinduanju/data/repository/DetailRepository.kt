@@ -228,11 +228,20 @@ class DetailRepository(
                         val actualIsCached = cachedFile != null && cachedFile.exists()
                         val actualLocalPath = if (actualIsCached) cachedFile?.absolutePath else null
                         
-                        // 优先使用实际文件状态，其次用本地数据
+                        // 获取本地数据
                         val localData = localEpisodeMap[item.id]
+                        
+                        // 合并数据：优先使用本地保存的进度（如果本地进度更新）
+                        val finalPositionTicks = if (localData != null && localData.playbackPositionTicks > serverData.playbackPositionTicks) {
+                            localData.playbackPositionTicks
+                        } else {
+                            serverData.playbackPositionTicks
+                        }
+                        
                         serverData.copy(
                             isCached = actualIsCached || (localData?.isCached ?: false),
-                            localVideoPath = actualLocalPath ?: localData?.localVideoPath
+                            localVideoPath = actualLocalPath ?: localData?.localVideoPath,
+                            playbackPositionTicks = finalPositionTicks
                         )
                     }.sortedBy { it.episodeNumber }
                     

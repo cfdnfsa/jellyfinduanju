@@ -10,12 +10,16 @@ import com.wjp.jellyfinduanju.data.repository.DetailRepository
 import com.wjp.jellyfinduanju.data.settings.AppSettings
 import com.wjp.jellyfinduanju.download.DownloadManager
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * ============================================================================
@@ -72,6 +76,9 @@ class PlayerViewModel(
     /** 上次保存进度的时间戳，用于防抖 */
     private var lastProgressSaveTime = 0L
     
+    /** 进度保存互斥锁，确保同一时间只有一个保存任务执行 */
+    private val progressSaveMutex = Mutex()
+    
     // ============================================================================
     // 初始化
     // ============================================================================
@@ -86,26 +93,20 @@ class PlayerViewModel(
     /**
      * 启动进度保存循环
      * 
-     * 根据设置中的上报间隔自动保存播放进度到本地和服务器
-     * 如果设置为 0，则不启动自动上报
+     * 每10秒自动保存播放进度到本地和服务器
      * 这是一个无限循环，在 ViewModel 销毁时会被取消
      */
     private fun startProgressSaveLoop() {
-        // 读取上报间隔设置（秒）
-        val reportIntervalSeconds = AppSettings.reportInterval
-        
-        // 如果设置为 0，不启动自动上报
-        if (reportIntervalSeconds == 0) {
-            return
-        }
-        
-        // 转换为毫秒
-        val intervalMillis = reportIntervalSeconds * 1_000L
+        // 固定10秒上报一次
+        val intervalMillis = 10_000L
         
         progressSaveJob = viewModelScope.launch {
             while (true) {
                 delay(intervalMillis)
-                saveCurrentProgress()
+                // 使用互斥锁保护保存操作
+                progressSaveMutex.withLock {
+                    saveCurrentProgress()
+                }
             }
         }
     }
@@ -202,11 +203,13 @@ class PlayerViewModel(
      * @param index 目标集在 allEpisodes 中的索引
      * 
      * 会触发 onEpisodeChanged() 进行视频切换
+     * 注意：切换前会强制保存当前进度
      */
     fun switchToEpisode(index: Int) {
         if (index in 0 until uiState.value.allEpisodes.size && index != uiState.value.currentEpisodeIndex) {
+            val oldEpisode = uiState.value.currentEpisode  // 保存旧集数信息
             _uiState.update { it.copy(currentEpisodeIndex = index) }
-            onEpisodeChanged()
+            onEpisodeChanged(oldEpisode)  // 传入旧集数，确保保存旧集数的进度
         }
     }
     
@@ -379,65 +382,77 @@ class PlayerViewModel(
      * 注意：这是一个 suspend 函数，需要在协程中调用
      */
     private suspend fun saveCurrentProgress(force: Boolean = false) {
-        try {
-            val state = uiState.value
-            val episode = state.currentEpisode ?: return
-            
-            if (state.currentPosition <= 0) return
-            
-            // 防抖：距离上次保存不足 5 秒则跳过（避免频繁保存影响性能）
-            val now = System.currentTimeMillis()
-            if (!force && now - lastProgressSaveTime < 5_000L) {
-                return
-            }
-            lastProgressSaveTime = now
-            
-            // 毫秒转 ticks：1毫秒 = 10,000 ticks
-            val positionTicks = state.currentPosition * 10_000
-            
-            // 保存到本地
-            detailRepository.savePlaybackPositionLocal(
-                seasonId = episode.seasonId,
-                episodeId = episode.id,
-                positionTicks = positionTicks
-            )
-            
-            // 上报到服务器（使用更可靠的 UserData API）
+        // 使用 NonCancellable 确保即使协程被取消，保存操作也能完成
+        withContext(NonCancellable) {
             try {
-                detailRepository.updatePlaybackPosition(
-                    episodeId = episode.id,
-                    positionTicks = positionTicks
-                )
-            } catch (_: Exception) { }
-        } catch (_: Exception) { }
+                val state = uiState.value
+                val episode = state.currentEpisode ?: return@withContext
+                
+                if (state.currentPosition <= 0) return@withContext
+                
+                // 防抖：距离上次保存不足 5 秒则跳过（避免频繁保存影响性能）
+                val now = System.currentTimeMillis()
+                if (!force && now - lastProgressSaveTime < 5_000L) {
+                    return@withContext
+                }
+                lastProgressSaveTime = now
+                
+                // 毫秒转 ticks：1毫秒 = 10,000 ticks
+                val positionTicks = state.currentPosition * 10_000
+                
+                // 1. 先保存到本地（保证本地进度一定被保存）
+                try {
+                    detailRepository.savePlaybackPositionLocal(
+                        seasonId = episode.seasonId,
+                        episodeId = episode.id,
+                        positionTicks = positionTicks
+                    )
+                } catch (e: Exception) { 
+                    // 本地保存失败（静默处理）
+                }
+                
+                // 2. 然后尝试上报到服务器（失败也不影响本地保存）
+                try {
+                    detailRepository.updatePlaybackPosition(
+                        episodeId = episode.id,
+                        positionTicks = positionTicks
+                    )
+                } catch (e: Exception) { 
+                    // 服务器上报失败（静默处理）
+                }
+            } catch (e: Exception) { 
+                // 异常（静默处理）
+            }
+        }
     }
     
     /**
-     * 立即汇报进度到服务器
+     * 强制保存当前进度（用于特殊场景）
      * 
-     * 用于 seek 结束后立即同步进度，不等待定时器
+     * 使用场景：
+     * - 返回键退出（必须保存）
+     * - 切换集数（必须保存）
+     * - 滑动切换视频（可防抖）
+     * - 拖动进度条结束（可防抖）
+     * - 应用进入后台（必须保存）
+     * 
+     * @param mustSave 是否必须保存（忽略防抖），默认 false
      */
-    private fun reportProgressToServer() {
+    fun forceSaveProgress(mustSave: Boolean = false) {
+        // 防抖：如果不是必须保存，且距离上次调用不足 2 秒，则跳过
+        if (!mustSave) {
+            val now = System.currentTimeMillis()
+            if (now - lastProgressSaveTime < 2_000L) {
+                return
+            }
+        }
+        
+        // 启动新的保存任务（使用互斥锁确保不会并发执行）
         viewModelScope.launch {
-            try {
-                val state = uiState.value
-                val episode = state.currentEpisode ?: return@launch
-                if (state.currentPosition <= 0) return@launch
-                
-                val positionTicks = state.currentPosition * 10_000
-                
-                detailRepository.savePlaybackPositionLocal(
-                    seasonId = episode.seasonId,
-                    episodeId = episode.id,
-                    positionTicks = positionTicks
-                )
-                
-                // 使用更可靠的 UserData API 上报进度
-                detailRepository.updatePlaybackPosition(
-                    episodeId = episode.id,
-                    positionTicks = positionTicks
-                )
-            } catch (_: Exception) { }
+            // 等待获取互斥锁（如果有其他保存任务正在执行，会等待其完成）
+            progressSaveMutex.withLock {
+                saveCurrentProgress(force = true)
+            }
         }
     }
     
@@ -463,7 +478,7 @@ class PlayerViewModel(
     
     /**
      * 清除跳转位置（ExoPlayer seek 完成后调用）
-     * 
+     *
      * 同时清除 isSeeking 和 isChangingEpisode 标记
      */
     fun clearSeekPosition() {
@@ -515,7 +530,8 @@ class PlayerViewModel(
                     isPlaying = true
                 ) 
             }
-            reportProgressToServer()
+            // 拖动进度条结束时强制保存进度
+            forceSaveProgress()
         } else {
             _uiState.update { it.copy(isSeeking = false, isPlaying = true) }
         }
@@ -601,9 +617,10 @@ class PlayerViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isVideoLoading = true, videoError = null, hasReportedComplete = false) }
-            
+
             // 获取历史进度（ticks 转毫秒）
             val savedPosition = episode.playbackPositionTicks / 10_000
+
             if (savedPosition > 0) {
                 _uiState.update { it.copy(seekToPosition = savedPosition) }
             }
@@ -661,27 +678,78 @@ class PlayerViewModel(
      * 切换剧集后的处理
      * 
      * 【流程】
-     * 1. 设置 isChangingEpisode = true（忽略旧视频的回调）
-     * 2. 保存当前进度
+     * 1. 保存旧集数进度（阻塞等待完成）
+     * 2. 设置 isChangingEpisode = true（忽略旧视频的回调）
      * 3. 重置播放状态
      * 4. 加载新视频
+     * 
+     * @param oldEpisode 旧集数信息（用于保存进度）
      */
-    private fun onEpisodeChanged() {
+    private fun onEpisodeChanged(oldEpisode: EpisodeLocalData?) {
         viewModelScope.launch {
-            saveCurrentProgress(force = true)
+            // 保存旧集数的进度
+            if (oldEpisode != null) {
+                // 使用互斥锁保护保存操作
+                progressSaveMutex.withLock {
+                    saveOldEpisodeProgress(oldEpisode)
+                }
+            }
+            
+            _uiState.update { 
+                it.copy(
+                    currentPosition = 0,
+                    duration = 0,
+                    currentVideoUri = null,
+                    seekToPosition = null,  // 清空 seekToPosition，确保新进度能触发 LaunchedEffect
+                    hasReportedComplete = false,
+                    isChangingEpisode = true
+                )
+            }
+            
+            loadVideoSource()
         }
-        
-        _uiState.update { 
-            it.copy(
-                currentPosition = 0,
-                duration = 0,
-                currentVideoUri = null,
-                hasReportedComplete = false,
-                isChangingEpisode = true
-            )
+    }
+    
+    /**
+     * 保存旧集数的进度
+     * 
+     * 注意：这个方法专门用于集数切换时保存旧集数的进度
+     * 因为切换后 uiState.currentEpisode 已经是新集数了
+     */
+    private suspend fun saveOldEpisodeProgress(oldEpisode: EpisodeLocalData) {
+        withContext(NonCancellable) {
+            try {
+                val currentPosition = uiState.value.currentPosition
+                if (currentPosition <= 0) {
+                    return@withContext
+                }
+                
+                val positionTicks = currentPosition * 10_000L
+                
+                // 1. 保存到本地
+                try {
+                    detailRepository.savePlaybackPositionLocal(
+                        seasonId = oldEpisode.seasonId,
+                        episodeId = oldEpisode.id,
+                        positionTicks = positionTicks
+                    )
+                } catch (e: Exception) { 
+                    // 本地保存失败（静默处理）
+                }
+                
+                // 2. 上报到服务器
+                try {
+                    detailRepository.updatePlaybackPosition(
+                        episodeId = oldEpisode.id,
+                        positionTicks = positionTicks
+                    )
+                } catch (e: Exception) { 
+                    // 服务器上报失败（静默处理）
+                }
+            } catch (e: Exception) { 
+                // 异常（静默处理）
+            }
         }
-        
-        loadVideoSource()
     }
     
     // ============================================================================
