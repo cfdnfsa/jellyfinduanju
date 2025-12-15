@@ -17,18 +17,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
@@ -36,16 +36,14 @@ import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,20 +52,18 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
@@ -80,30 +76,30 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import coil.request.CachePolicy
-import androidx.compose.ui.platform.LocalContext
+import coil.request.ImageRequest
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.settings.AppSettings
+import kotlinx.coroutines.launch
 
 /**
  * ListScreen - 剧集列表页面
@@ -151,9 +147,11 @@ fun ListScreen(
         onMarkAsUnwatched = { viewModel.markSeriesAsWatched(false) },
         onCacheAll = { viewModel.showCacheAllDialog() },
         onDeleteAllCache = { viewModel.showDeleteAllCacheDialog() },
+        onDeleteSeries = { viewModel.showDeleteSeriesDialog() },
         onSetTag = { viewModel.showTagDialog() },
         onConfirmCacheAll = { viewModel.confirmCacheAll() },
         onConfirmDeleteAllCache = { viewModel.confirmDeleteAllCache() },
+        onConfirmDeleteSeries = { viewModel.confirmDeleteSeries() },
         onToggleTag = { tag, selected -> viewModel.toggleSeriesTag(tag, selected) },
         onClearTags = { viewModel.clearSeriesTags() },
         onFilterTagChange = { viewModel.updateFilterTag(it) },
@@ -184,9 +182,11 @@ private fun ListScreenContent(
     onMarkAsUnwatched: () -> Unit,
     onCacheAll: () -> Unit,
     onDeleteAllCache: () -> Unit,
+    onDeleteSeries: () -> Unit,
     onSetTag: () -> Unit,
     onConfirmCacheAll: () -> Unit,
     onConfirmDeleteAllCache: () -> Unit,
+    onConfirmDeleteSeries: () -> Unit,
     onToggleTag: (String, Boolean) -> Unit,
     onClearTags: () -> Unit,
     onFilterTagChange: (String) -> Unit,
@@ -289,7 +289,7 @@ private fun ListScreenContent(
                     Box {
                         IconButton(onClick = { showSortMenu = true }) {
                             Icon(
-                                imageVector = Icons.Default.Sort,
+                                imageVector = Icons.AutoMirrored.Filled.Sort,
                                 contentDescription = "排序"
                             )
                         }
@@ -451,6 +451,7 @@ private fun ListScreenContent(
                                 onMarkAsUnwatched = onMarkAsUnwatched,
                                 onCacheAll = onCacheAll,
                                 onDeleteAllCache = onDeleteAllCache,
+                                onDeleteSeries = onDeleteSeries,
                                 onSetTag = onSetTag,
                                 getImageUrl = getImageUrl
                             )
@@ -466,7 +467,7 @@ private fun ListScreenContent(
         val series = uiState.selectedSeries ?: return@let
         
         when (dialogType) {
-            DialogType.CACHE_ALL, DialogType.DELETE_ALL_CACHE -> {
+            DialogType.CACHE_ALL, DialogType.DELETE_ALL_CACHE, DialogType.DELETE_SERIES -> {
                 AlertDialog(
                     onDismissRequest = onDismissDialog,
                     title = {
@@ -474,6 +475,7 @@ private fun ListScreenContent(
                             text = when (dialogType) {
                                 DialogType.CACHE_ALL -> "缓存全部"
                                 DialogType.DELETE_ALL_CACHE -> "删除全部缓存"
+                                DialogType.DELETE_SERIES -> "删除剧集"
                                 else -> ""
                             }
                         )
@@ -483,6 +485,7 @@ private fun ListScreenContent(
                             text = when (dialogType) {
                                 DialogType.CACHE_ALL -> "确定要下载「${series.name}」的全部剧集吗？"
                                 DialogType.DELETE_ALL_CACHE -> "确定要删除「${series.name}」的全部本地缓存吗？"
+                                DialogType.DELETE_SERIES -> "确定要删除「${series.name}」吗？\n\n此操作将删除：\n• 列表数据\n• 剧集详情\n• 所有下载的视频\n\n此操作不可撤销！"
                                 else -> ""
                             }
                         )
@@ -493,11 +496,18 @@ private fun ListScreenContent(
                                 when (dialogType) {
                                     DialogType.CACHE_ALL -> onConfirmCacheAll()
                                     DialogType.DELETE_ALL_CACHE -> onConfirmDeleteAllCache()
+                                    DialogType.DELETE_SERIES -> onConfirmDeleteSeries()
                                     else -> {}
                                 }
                             }
                         ) {
-                            Text("确定")
+                            Text(
+                                text = "确定",
+                                color = if (dialogType == DialogType.DELETE_SERIES) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.primary
+                            )
                         }
                     },
                     dismissButton = {
@@ -668,7 +678,7 @@ private fun TagFilterBar(
                 tag == "已缓存" -> Icons.Default.Download
                 tag == "未看" -> Icons.Default.VisibilityOff
                 tag == "已看" -> Icons.Default.CheckCircle
-                tag in customTags -> Icons.Default.Label
+                tag in customTags -> Icons.AutoMirrored.Filled.Label
                 else -> Icons.Default.Folder  // 云端文件夹标签
             }
             
@@ -718,6 +728,7 @@ private fun SeriesGrid(
     onMarkAsUnwatched: () -> Unit,
     onCacheAll: () -> Unit,
     onDeleteAllCache: () -> Unit,
+    onDeleteSeries: () -> Unit,
     onSetTag: () -> Unit,
     getImageUrl: (String, (String?) -> Unit) -> Unit
 ) {
@@ -753,8 +764,10 @@ private fun SeriesGrid(
                 onMarkAsUnwatched = onMarkAsUnwatched,
                 onCacheAll = onCacheAll,
                 onDeleteAllCache = onDeleteAllCache,
+                onDeleteSeries = onDeleteSeries,
                 onSetTag = onSetTag,
-                getImageUrl = getImageUrl
+                getImageUrl = getImageUrl,
+                modifier = Modifier.animateItem()
             )
         }
     }
@@ -777,8 +790,10 @@ private fun SeriesGridItem(
     onMarkAsUnwatched: () -> Unit,
     onCacheAll: () -> Unit,
     onDeleteAllCache: () -> Unit,
+    onDeleteSeries: () -> Unit,
     onSetTag: () -> Unit,
-    getImageUrl: (String, (String?) -> Unit) -> Unit
+    getImageUrl: (String, (String?) -> Unit) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     // 图片 URL 状态
     var imageUrl by remember { mutableStateOf<String?>(null) }
@@ -790,7 +805,9 @@ private fun SeriesGridItem(
         }
     }
     
-    Box {
+    Box(
+        modifier = modifier  // 应用从外部传入的 modifier（包含 animateItem）
+    ) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1023,8 +1040,29 @@ private fun SeriesGridItem(
                 onClick = onSetTag,
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.Default.Label,
+                        imageVector = Icons.AutoMirrored.Filled.Label,
                         contentDescription = null
+                    )
+                }
+            )
+            
+            // 分割线
+            HorizontalDivider()
+            
+            // 删除剧集（危险操作，红色显示）
+            DropdownMenuItem(
+                text = { 
+                    Text(
+                        text = "删除剧集",
+                        color = MaterialTheme.colorScheme.error
+                    ) 
+                },
+                onClick = onDeleteSeries,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
                     )
                 }
             )

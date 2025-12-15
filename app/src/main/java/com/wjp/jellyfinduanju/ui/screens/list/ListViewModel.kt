@@ -387,6 +387,13 @@ class ListViewModel(
     }
     
     /**
+     * 显示删除剧集对话框
+     */
+    fun showDeleteSeriesDialog() {
+        _uiState.update { it.copy(dialogType = DialogType.DELETE_SERIES) }
+    }
+    
+    /**
      * 切换剧集标签
      * 
      * @param tag 标签名称
@@ -558,6 +565,43 @@ class ListViewModel(
             }
         }
     }
+    
+    /**
+     * 确认删除剧集
+     * 
+     * 删除包括：
+     * 1. 列表数据
+     * 2. 剧集详情（季和集）
+     * 3. 所有下载的视频文件
+     * 4. 图片缓存
+     */
+    fun confirmDeleteSeries() {
+        val series = _uiState.value.selectedSeries ?: return
+        hideDialog()
+        
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            
+            try {
+                // 1. 删除所有视频缓存
+                DownloadManager.deleteAllCacheForSeries(series.id)
+                
+                // 2. 删除剧集数据和详情缓存
+                seriesRepository.deleteSeriesAndCleanup(series.id)
+                
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        error = "已删除「${series.name}」"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { 
+                    it.copy(isLoading = false, error = "删除失败: ${e.message}")
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -566,7 +610,8 @@ class ListViewModel(
 enum class DialogType {
     CACHE_ALL,
     DELETE_ALL_CACHE,
-    SET_TAG
+    SET_TAG,
+    DELETE_SERIES  // 删除剧集（包括列表、详情和所有缓存）
 }
 
 /**
