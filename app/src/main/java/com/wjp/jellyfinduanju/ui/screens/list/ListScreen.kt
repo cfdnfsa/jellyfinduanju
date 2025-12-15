@@ -99,6 +99,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.CachePolicy
+import androidx.compose.ui.platform.LocalContext
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.settings.AppSettings
 
@@ -209,16 +212,18 @@ private fun ListScreenContent(
     // 获取所有标签
     val allTags = allFilterTags
     val selectedIndex = allTags.indexOf(uiState.selectedFilterTag).coerceAtLeast(0)
+    
+    // HorizontalPager 状态
     val pagerState = rememberPagerState(
         initialPage = selectedIndex,
         pageCount = { allTags.size }
     )
     val coroutineScope = rememberCoroutineScope()
     
-    // 监听 pager 变化，同步到标签选择
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage < allTags.size) {
-            val newTag = allTags[pagerState.currentPage]
+    // 监听 pager 滑动完成，同步到 ViewModel（只在滑动停止时触发）
+    LaunchedEffect(pagerState.settledPage) {
+        if (pagerState.settledPage < allTags.size) {
+            val newTag = allTags[pagerState.settledPage]
             if (newTag != uiState.selectedFilterTag) {
                 onFilterTagChange(newTag)
             }
@@ -401,10 +406,11 @@ private fun ListScreenContent(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // 标签筛选栏（始终显示）
+            // 标签筛选栏（直接使用 pagerState.currentPage，实时同步）
             TagFilterBar(
                 allTags = allTags,
-                selectedTag = uiState.selectedFilterTag,
+                currentPage = pagerState.currentPage,
+                currentPageOffsetFraction = pagerState.currentPageOffsetFraction,
                 onTagSelected = { tag ->
                     val index = allTags.indexOf(tag)
                     if (index >= 0) {
@@ -415,12 +421,12 @@ private fun ListScreenContent(
                 }
             )
             
-            // 横向滑动的内容区域
+            // HorizontalPager
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
-                // 每个页面显示对应标签筛选后的内容
+                // 只在当前页面渲染内容
                 Box(modifier = Modifier.fillMaxSize()) {
                     when {
                         // 加载中且列表为空
@@ -627,24 +633,25 @@ private fun ListScreenContent(
  * TagFilterBar - 标签筛选栏（可滑动的 Tab 样式）
  *
  * 使用 ScrollableTabRow 实现，带有选中指示器
+ * 实时跟随 HorizontalPager 的滑动进度
  */
 @Composable
 private fun TagFilterBar(
     allTags: List<String>,
-    selectedTag: String,
+    currentPage: Int,
+    currentPageOffsetFraction: Float,
     onTagSelected: (String) -> Unit
 ) {
     val customTags = AppSettings.customTags
-    val selectedIndex = allTags.indexOf(selectedTag).coerceAtLeast(0)
 
     ScrollableTabRow(
-        selectedTabIndex = selectedIndex,
+        selectedTabIndex = currentPage,
         modifier = Modifier.fillMaxWidth(),
         edgePadding = 8.dp,
         indicator = { tabPositions ->
-            if (selectedIndex < tabPositions.size) {
+            if (currentPage < tabPositions.size) {
                 TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedIndex]),
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[currentPage]),
                     color = MaterialTheme.colorScheme.primary
                 )
             }
@@ -652,7 +659,7 @@ private fun TagFilterBar(
         divider = {}  // 移除默认的分割线
     ) {
         allTags.forEachIndexed { index, tag ->
-            val isSelected = tag == selectedTag
+            val isSelected = index == currentPage
             
             // 根据标签类型获取图标
             val icon = when {
@@ -809,9 +816,15 @@ private fun SeriesGridItem(
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 if (imageUrl != null) {
-                    // 显示图片
+                    // 显示图片（优化：加载缩略图）
                     AsyncImage(
-                        model = imageUrl,
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(imageUrl)
+                            .crossfade(300)  // 300ms 淡入动画
+                            .size(400, 600)  // 缩略图尺寸（宽400px，高600px，足够清晰）
+                            .memoryCachePolicy(CachePolicy.ENABLED)  // 启用内存缓存
+                            .diskCachePolicy(CachePolicy.ENABLED)    // 启用磁盘缓存
+                            .build(),
                         contentDescription = series.name,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
