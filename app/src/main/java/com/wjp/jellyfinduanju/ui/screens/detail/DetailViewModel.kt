@@ -203,6 +203,14 @@ class DetailViewModel(
                             updatedEpisodes[seasonId] = episodes
                             state.copy(episodesBySeasonId = updatedEpisodes)
                         }
+                        
+                        // 检查是否所有季都加载完成，如果是则初始化默认展开的分组
+                        val allSeasonsLoaded = _uiState.value.seasons.all { season ->
+                            _uiState.value.episodesBySeasonId.containsKey(season.id)
+                        }
+                        if (allSeasonsLoaded && _uiState.value.expandedGroupKeys.isEmpty()) {
+                            initializeDefaultExpandedGroups()
+                        }
                     }
                 },
                 onFailure = { exception ->
@@ -461,6 +469,122 @@ class DetailViewModel(
         }
     }
     
+    // ==================== 分组展开/折叠 ====================
+    
+    /**
+     * 切换分组的展开/折叠状态
+     * 
+     * @param groupKey 分组 key（格式：seasonId-start-end）
+     */
+    fun toggleGroupExpansion(groupKey: String) {
+        _uiState.update { state ->
+            val newSet = state.expandedGroupKeys.toMutableSet()
+            if (newSet.contains(groupKey)) {
+                newSet.remove(groupKey)
+            } else {
+                newSet.add(groupKey)
+            }
+            state.copy(expandedGroupKeys = newSet)
+        }
+    }
+    
+    /**
+     * 批量选择/取消选择一个分组的所有剧集
+     * 
+     * @param seasonId 季 ID
+     * @param startEpisode 起始集数
+     * @param endEpisode 结束集数
+     */
+    fun toggleGroupSelection(seasonId: String, startEpisode: Int, endEpisode: Int) {
+        _uiState.update { state ->
+            // 获取该分组的所有剧集
+            val episodes = state.episodesBySeasonId[seasonId]?.filter { episode ->
+                episode.episodeNumber in startEpisode..endEpisode
+            } ?: return@update state
+            
+            // 过滤掉不可选的剧集（删除模式下只能选已缓存的）
+            val selectableEpisodes = if (state.isDeleteSelectMode) {
+                episodes.filter { it.isCached }
+            } else {
+                episodes
+            }
+            
+            val episodeIds = selectableEpisodes.map { it.id }.toSet()
+            
+            // 判断是否全选了
+            val allSelected = episodeIds.all { state.selectedEpisodeIds.contains(it) }
+            
+            val newSet = state.selectedEpisodeIds.toMutableSet()
+            if (allSelected) {
+                // 取消选择
+                newSet.removeAll(episodeIds)
+            } else {
+                // 选择
+                newSet.addAll(episodeIds)
+            }
+            
+            state.copy(selectedEpisodeIds = newSet)
+        }
+    }
+    
+    /**
+     * 初始化默认展开的分组
+     * 
+     * 策略：展开所有包含"正在看"剧集的分组（有进度但未看完）
+     */
+    private fun initializeDefaultExpandedGroups() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val seasons = _uiState.value.seasons
+            val episodesBySeasonId = _uiState.value.episodesBySeasonId
+            
+            if (seasons.isEmpty() || episodesBySeasonId.isEmpty()) return@launch
+            
+            val defaultExpandedKeys = mutableSetOf<String>()
+            
+            // 遍历每个季
+            for (season in seasons) {
+                val episodes = episodesBySeasonId[season.id] ?: continue
+                if (episodes.isEmpty()) continue
+                
+                // 按集数排序
+                val sortedEpisodes = episodes.sortedBy { it.episodeNumber }
+                
+                val groupSize = 10
+                var hasAnyWatching = false
+                
+                // 遍历所有分组
+                for (startEpisode in 1..sortedEpisodes.size step groupSize) {
+                    val endEpisode = minOf(startEpisode + groupSize - 1, sortedEpisodes.size)
+                    val groupEpisodes = sortedEpisodes.filter { 
+                        it.episodeNumber in startEpisode..endEpisode 
+                    }
+                    
+                    // 检查这个分组是否有"正在看"的剧集（有进度但未看完）
+                    val hasWatching = groupEpisodes.any { 
+                        !it.played && it.playbackPositionTicks > 0
+                    }
+                    
+                    if (hasWatching) {
+                        val groupKey = "${season.id}-$startEpisode-$endEpisode"
+                        defaultExpandedKeys.add(groupKey)
+                        hasAnyWatching = true
+                    }
+                }
+                
+                // 如果这个季没有"正在看"的，就展开第一个分组
+                if (!hasAnyWatching) {
+                    val groupKey = "${season.id}-1-${minOf(groupSize, sortedEpisodes.size)}"
+                    defaultExpandedKeys.add(groupKey)
+                }
+            }
+            
+            // 更新状态
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(expandedGroupKeys = defaultExpandedKeys) }
+            }
+        }
+    }
+    
     /**
      * 缓存选中的剧集
      * 
@@ -600,6 +724,7 @@ class DetailViewModel(
  * @property episodeToMark 待标记的剧集（用于显示对话框）
  * @property isMarkingPlayed 是否正在标记已看完
  * @property shouldNavigateBack 是否需要返回上一页（删除已从服务器删除的剧集后触发）
+ * @property expandedGroupKeys 已展开的分组 key 集合（格式：seasonId-start-end，如 "s1-1-10"）
  */
 data class DetailUiState(
     val series: SeriesLocalData,
@@ -619,7 +744,9 @@ data class DetailUiState(
     val pendingEpisodeIds: Set<String> = emptySet(),      // 排队等待中
     // 上报进度状态
     val isUploading: Boolean = false,
-    val uploadResult: String? = null
+    val uploadResult: String? = null,
+    // 分组展开状态
+    val expandedGroupKeys: Set<String> = emptySet()       // 已展开的分组
 ) {
     /**
      * 是否处于任意选择模式

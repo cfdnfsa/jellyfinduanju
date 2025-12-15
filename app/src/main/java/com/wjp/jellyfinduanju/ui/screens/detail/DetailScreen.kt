@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -135,6 +137,10 @@ fun DetailScreen(
         onConfirmMarkPlayed = { viewModel.confirmMarkAsPlayed() },
         onDismissMarkDialog = { viewModel.hideMarkPlayedDialog() },
         onErrorShown = { viewModel.clearError() },
+        onToggleGroupExpansion = { groupKey -> viewModel.toggleGroupExpansion(groupKey) },
+        onToggleGroupSelection = { seasonId, startEp, endEp -> 
+            viewModel.toggleGroupSelection(seasonId, startEp, endEp) 
+        },
         getImageUrl = { itemId, imageTag, callback ->
             viewModel.getImageUrl(itemId, imageTag, callback)
         }
@@ -163,6 +169,8 @@ private fun DetailScreenContent(
     onConfirmMarkPlayed: () -> Unit,
     onDismissMarkDialog: () -> Unit,
     onErrorShown: () -> Unit,
+    onToggleGroupExpansion: (String) -> Unit,
+    onToggleGroupSelection: (String, Int, Int) -> Unit,
     getImageUrl: (String, String?, (String?) -> Unit) -> Unit
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -250,6 +258,7 @@ private fun DetailScreenContent(
                         selectedEpisodeIds = uiState.selectedEpisodeIds,
                         downloadingEpisodeIds = uiState.downloadingEpisodeIds,
                         pendingEpisodeIds = uiState.pendingEpisodeIds,
+                        expandedGroupKeys = uiState.expandedGroupKeys,
                         onEpisodeClick = { episode ->
                             if (uiState.isInSelectMode) {
                                 onToggleEpisodeSelection(episode.id)
@@ -258,6 +267,8 @@ private fun DetailScreenContent(
                             }
                         },
                         onEpisodeLongClick = onEpisodeLongClick,
+                        onToggleGroupExpansion = onToggleGroupExpansion,
+                        onToggleGroupSelection = onToggleGroupSelection,
                         getImageUrl = getImageUrl
                     )
                     
@@ -552,12 +563,182 @@ private fun ActionButtons(
     }
 }
 
+// ==================== 分组头部 ====================
+
+/**
+ * EpisodeGroupHeader - 剧集分组头部
+ * 
+ * 显示分组信息、进度点、展开/折叠按钮
+ * 选择模式下显示复选框
+ * 
+ * @param seasonId 季 ID
+ * @param startEpisode 起始集数
+ * @param endEpisode 结束集数
+ * @param episodes 该分组的剧集列表
+ * @param isExpanded 是否展开
+ * @param isInSelectMode 是否处于选择模式
+ * @param selectedEpisodeIds 已选中的剧集 ID
+ * @param isDeleteMode 是否是删除模式
+ * @param onToggleExpansion 切换展开/折叠
+ * @param onToggleGroupSelection 切换分组选择
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EpisodeGroupHeader(
+    seasonId: String,
+    startEpisode: Int,
+    endEpisode: Int,
+    episodes: List<EpisodeLocalData>,
+    isExpanded: Boolean,
+    isInSelectMode: Boolean,
+    selectedEpisodeIds: Set<String>,
+    isDeleteMode: Boolean,
+    onToggleExpansion: () -> Unit,
+    onToggleGroupSelection: () -> Unit
+) {
+    // 计算进度信息
+    val watchedCount = episodes.count { it.played }
+    val totalCount = episodes.size
+    
+    // 判断是否全选（在选择模式下）
+    val selectableEpisodes = if (isDeleteMode) {
+        episodes.filter { it.isCached }
+    } else {
+        episodes
+    }
+    val isGroupSelected = selectableEpisodes.isNotEmpty() && 
+        selectableEpisodes.all { selectedEpisodeIds.contains(it.id) }
+    val isPartiallySelected = selectableEpisodes.any { selectedEpisodeIds.contains(it.id) } && !isGroupSelected
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .combinedClickable(
+                onClick = onToggleExpansion,
+                onLongClick = if (isInSelectMode) onToggleGroupSelection else null
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 左侧：复选框 + 标题
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 选择模式下的复选框
+            if (isInSelectMode) {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .border(
+                            width = 2.dp,
+                            color = if (isGroupSelected || isPartiallySelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outline
+                            },
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .background(
+                            if (isGroupSelected) MaterialTheme.colorScheme.primary
+                            else Color.Transparent
+                        )
+                        .combinedClickable(onClick = onToggleGroupSelection),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isGroupSelected) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "已选中",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    } else if (isPartiallySelected) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.primary,
+                                    RoundedCornerShape(2.dp)
+                                )
+                        )
+                    }
+                }
+            }
+            
+            // 分组标题
+            Text(
+                text = "第$startEpisode-${endEpisode}集",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        // 中间：进度点（居中）
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                episodes.take(10).forEach { episode ->
+                    val dotColor = when {
+                        episode.played -> Color(0xFF4CAF50)  // 绿色 - 已看完
+                        episode.playbackPositionTicks > 0 -> Color(0xFFFFC107)  // 黄色 - 正在看
+                        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)  // 灰色 - 未看
+                    }
+                    
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(
+                                color = dotColor,
+                                shape = CircleShape
+                            )
+                    )
+                }
+            }
+        }
+        
+        // 右侧：已看数量 + 展开图标
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 已看数量
+            Text(
+                text = "$watchedCount/$totalCount",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            // 展开/折叠图标
+            Icon(
+                imageVector = if (isExpanded) {
+                    Icons.Default.KeyboardArrowDown
+                } else {
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight
+                },
+                contentDescription = if (isExpanded) "折叠" else "展开",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 // ==================== 季区域 ====================
 
 /**
- * SeasonSection - 单季区域
+ * SeasonSection - 单季区域（带分组折叠）
+ * 
+ * 将剧集按10集分组，每组可以折叠/展开
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SeasonSection(
     season: SeasonLocalData,
@@ -567,8 +748,11 @@ private fun SeasonSection(
     selectedEpisodeIds: Set<String>,
     downloadingEpisodeIds: Set<String>,
     pendingEpisodeIds: Set<String>,
+    expandedGroupKeys: Set<String>,
     onEpisodeClick: (EpisodeLocalData) -> Unit,
     onEpisodeLongClick: (EpisodeLocalData) -> Unit,
+    onToggleGroupExpansion: (String) -> Unit,
+    onToggleGroupSelection: (String, Int, Int) -> Unit,
     getImageUrl: (String, String?, (String?) -> Unit) -> Unit
 ) {
     Column(
@@ -584,35 +768,90 @@ private fun SeasonSection(
             modifier = Modifier.padding(bottom = 12.dp)
         )
         
-        // 剧集网格（使用 FlowRow 实现自动换行）
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            episodes.forEachIndexed { index, episode ->
-                val isSelected = selectedEpisodeIds.contains(episode.id)
-                val isSelectable = !isDeleteMode || episode.isCached
-                val isDownloading = downloadingEpisodeIds.contains(episode.id)
-                val isPending = pendingEpisodeIds.contains(episode.id)
-                
-                key(episode.id) {
-                    EpisodeCard(
-                        episode = episode,
-                        isSelected = isSelected,
-                        isInSelectMode = isInSelectMode,
-                        isSelectable = isSelectable,
-                        isDownloading = isDownloading,
-                        isPending = isPending,
-                        onClick = { 
-                            if (isSelectable || !isInSelectMode) {
-                                onEpisodeClick(episode)
-                            }
-                        },
-                        onLongClick = { if (!isInSelectMode) onEpisodeLongClick(episode) }
-                    )
+        // 按集数排序
+        val sortedEpisodes = episodes.sortedBy { it.episodeNumber }
+        
+        // 分组大小
+        val groupSize = 10
+        
+        // 计算分组数量
+        val totalEpisodes = sortedEpisodes.size
+        if (totalEpisodes == 0) return
+        
+        // 按10集分组
+        val groups = mutableListOf<Pair<IntRange, List<EpisodeLocalData>>>()
+        var startEpisode = 1
+        
+        while (startEpisode <= totalEpisodes) {
+            val endEpisode = minOf(startEpisode + groupSize - 1, totalEpisodes)
+            val groupEpisodes = sortedEpisodes.filter { 
+                it.episodeNumber in startEpisode..endEpisode 
+            }
+            
+            if (groupEpisodes.isNotEmpty()) {
+                groups.add(Pair(startEpisode..endEpisode, groupEpisodes))
+            }
+            
+            startEpisode += groupSize
+        }
+        
+        // 显示每个分组
+        groups.forEach { (range, groupEpisodes) ->
+            val startEp = range.first
+            val endEp = range.last
+            val groupKey = "${season.id}-$startEp-$endEp"
+            val isExpanded = expandedGroupKeys.contains(groupKey)
+            
+            // 分组头部
+            EpisodeGroupHeader(
+                seasonId = season.id,
+                startEpisode = startEp,
+                endEpisode = endEp,
+                episodes = groupEpisodes,
+                isExpanded = isExpanded,
+                isInSelectMode = isInSelectMode,
+                selectedEpisodeIds = selectedEpisodeIds,
+                isDeleteMode = isDeleteMode,
+                onToggleExpansion = { onToggleGroupExpansion(groupKey) },
+                onToggleGroupSelection = { onToggleGroupSelection(season.id, startEp, endEp) }
+            )
+            
+            // 展开时显示剧集列表
+            if (isExpanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    groupEpisodes.forEach { episode ->
+                        val isSelected = selectedEpisodeIds.contains(episode.id)
+                        val isSelectable = !isDeleteMode || episode.isCached
+                        val isDownloading = downloadingEpisodeIds.contains(episode.id)
+                        val isPending = pendingEpisodeIds.contains(episode.id)
+                        
+                        key(episode.id) {
+                            EpisodeCard(
+                                episode = episode,
+                                isSelected = isSelected,
+                                isInSelectMode = isInSelectMode,
+                                isSelectable = isSelectable,
+                                isDownloading = isDownloading,
+                                isPending = isPending,
+                                onClick = { 
+                                    if (isSelectable || !isInSelectMode) {
+                                        onEpisodeClick(episode)
+                                    }
+                                },
+                                onLongClick = { if (!isInSelectMode) onEpisodeLongClick(episode) }
+                            )
+                        }
+                    }
                 }
             }
+            
+            // 分组之间的间距
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }
@@ -620,24 +859,19 @@ private fun SeasonSection(
 // ==================== 剧集方框组件 ====================
 
 /**
- * EpisodeCard - 单个剧集方框
+ * EpisodeCard - 单个剧集卡片（两行型布局）
  * 
  * 布局：
- * ┌─────────────────┐
- * │ [缓存标记]      │
- * │      集数       │
- * │     进度%      │
- * └─────────────────┘
+ * ┌──────────────────────────┐
+ * │ 第1集              ⬇ 50% │  ← 第一行：集数 + 状态图标
+ * │ 相遇的那天                │  ← 第二行：标题
+ * └──────────────────────────┘
  * 
  * 颜色：
  * - 绿色边框/背景：已看完
+ * - 橙色边框/背景：正在看（有进度）
  * - 灰色边框/背景：未看
  * - 选中时有特殊高亮
- * 
- * 缓存图标（右上角）：
- * - 绿色实心圆 + 下载图标：已缓存
- * - 蓝色实心圆 + 旋转图标：正在下载
- * - 橙色实心圆 + 时钟图标：排队等待
  * 
  * @param episode 剧集数据
  * @param isSelected 是否被选中
@@ -679,15 +913,15 @@ private fun EpisodeCard(
         else -> MaterialTheme.colorScheme.surface
     }
     
-    Box(
+    Row(
         modifier = Modifier
-            .size(width = 72.dp, height = 64.dp)
-            .clip(RoundedCornerShape(12.dp))  // 现代化圆角
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
             .background(backgroundColor)
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
                 color = borderColor,
-                shape = RoundedCornerShape(12.dp)  // 现代化圆角
+                shape = RoundedCornerShape(8.dp)
             )
             .combinedClickable(
                 enabled = isSelectable || !isInSelectMode,
@@ -701,96 +935,117 @@ private fun EpisodeCard(
                     Modifier
                 }
             )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // 缓存/下载状态标记（右上角）
-        // 优先级：已缓存 > 正在下载 > 排队中
-        val showStatusIcon = episode.isCached || isDownloading || isPending
-        
-        if (showStatusIcon) {
-            val statusColor = when {
-                episode.isCached -> Color(0xFF4CAF50)  // 绿色 - 已缓存
-                isDownloading -> Color(0xFF2196F3)     // 蓝色 - 下载中
-                else -> Color(0xFFFF9800)               // 橙色 - 排队中
-            }
-            
-            // 所有状态都使用下载图标，通过颜色区分
-            val statusIcon = Icons.Default.Download
-            
-            val statusDesc = when {
-                episode.isCached -> "已缓存"
-                isDownloading -> "下载中"
-                else -> "排队中"
-            }
-            
+        // 左侧：选中标记（选择模式）
+        if (isInSelectMode) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .size(16.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
                     .background(
-                        color = statusColor,
+                        if (isSelected) MaterialTheme.colorScheme.primary 
+                        else Color.Transparent
+                    )
+                    .border(
+                        width = 2.dp,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outline,
                         shape = CircleShape
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = statusIcon,
-                    contentDescription = statusDesc,
-                    tint = Color.White,
-                    modifier = Modifier.size(10.dp)
-                )
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "已选中",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
+            
+            Spacer(modifier = Modifier.width(12.dp))
         }
         
-        // 选中标记（左上角）
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(4.dp)
-                    .size(16.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "已选中",
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(10.dp)
-                )
-            }
-        }
-        
-        // 内容区域
+        // 中间：集数和标题
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            modifier = Modifier.weight(1f)
         ) {
-            // 集数
+            // 第一行：集数
             Text(
-                text = "${episode.episodeNumber}",
-                style = MaterialTheme.typography.titleMedium,
+                text = "第${episode.episodeNumber}集",
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = if (episode.played) watchedColor else MaterialTheme.colorScheme.onSurface
             )
             
-            // 进度
+            // 第二行：标题
+            Text(
+                text = episode.name,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        
+        Spacer(modifier = Modifier.width(12.dp))
+        
+        // 右侧：状态图标 + 进度
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 缓存/下载状态图标
+            val showStatusIcon = episode.isCached || isDownloading || isPending
+            
+            if (showStatusIcon) {
+                val statusColor = when {
+                    episode.isCached -> Color(0xFF4CAF50)  // 绿色 - 已缓存
+                    isDownloading -> Color(0xFF2196F3)     // 蓝色 - 下载中
+                    else -> Color(0xFFFF9800)               // 橙色 - 排队中
+                }
+                
+                val statusDesc = when {
+                    episode.isCached -> "已缓存"
+                    isDownloading -> "下载中"
+                    else -> "排队中"
+                }
+                
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .background(
+                            color = statusColor,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = statusDesc,
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+            
+            // 进度文字
             Text(
                 text = episode.getProgressText(),
                 style = MaterialTheme.typography.labelSmall,
                 color = if (episode.played) {
-                    watchedColor.copy(alpha = 0.7f)
+                    watchedColor
                 } else if (episode.playbackPositionTicks > 0) {
                     watchingColor
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
-                }
+                },
+                fontWeight = FontWeight.Medium
             )
         }
     }
@@ -893,7 +1148,8 @@ private fun PreviewDetailScreen() {
             uiState = DetailUiState(
                 series = series,
                 seasons = seasons,
-                episodesBySeasonId = mapOf("s1" to episodes)
+                episodesBySeasonId = mapOf("s1" to episodes),
+                expandedGroupKeys = setOf("s1-1-10")  // 默认展开第一组
             ),
             onBack = {},
             onSync = {},
@@ -910,6 +1166,8 @@ private fun PreviewDetailScreen() {
             onConfirmMarkPlayed = {},
             onDismissMarkDialog = {},
             onErrorShown = {},
+            onToggleGroupExpansion = {},
+            onToggleGroupSelection = { _, _, _ -> },
             getImageUrl = { _, _, _ -> }
         )
     }
@@ -952,7 +1210,8 @@ private fun PreviewSelectMode() {
                 seasons = seasons,
                 episodesBySeasonId = mapOf("s1" to episodes),
                 isCacheSelectMode = true,
-                selectedEpisodeIds = setOf("e5", "e6", "e7")
+                selectedEpisodeIds = setOf("e5", "e6", "e7"),
+                expandedGroupKeys = setOf("s1-1-10")  // 默认展开第一组
             ),
             onBack = {},
             onSync = {},
@@ -969,6 +1228,8 @@ private fun PreviewSelectMode() {
             onConfirmMarkPlayed = {},
             onDismissMarkDialog = {},
             onErrorShown = {},
+            onToggleGroupExpansion = {},
+            onToggleGroupSelection = { _, _, _ -> },
             getImageUrl = { _, _, _ -> }
         )
     }
