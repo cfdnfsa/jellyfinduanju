@@ -131,7 +131,7 @@ private fun SettingsContent(
         Text(
             text = "账号",
             style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
         
@@ -151,7 +151,7 @@ private fun SettingsContent(
                     Icon(
                         imageVector = Icons.Default.Person,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(40.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
@@ -181,11 +181,7 @@ private fun SettingsContent(
                     Icon(
                         imageVector = Icons.Default.Cloud,
                         contentDescription = null,
-                        tint = if (uiState.activeServerIndex == 0) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.secondary
-                        },
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(40.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
@@ -200,7 +196,7 @@ private fun SettingsContent(
                             text = uiState.serverConfig?.serverUrl ?: "-",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (uiState.activeServerIndex == 0) {
-                                MaterialTheme.colorScheme.primary
+                                MaterialTheme.colorScheme.onSurface
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
@@ -223,11 +219,7 @@ private fun SettingsContent(
                         Icon(
                             imageVector = Icons.Default.Cloud,
                             contentDescription = null,
-                            tint = if (uiState.activeServerIndex == 1) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.secondary
-                            },
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(40.dp)
                         )
                         Spacer(modifier = Modifier.width(16.dp))
@@ -236,7 +228,7 @@ private fun SettingsContent(
                                 text = uiState.secondaryServerUrl,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (uiState.activeServerIndex == 1) {
-                                    MaterialTheme.colorScheme.primary
+                                    MaterialTheme.colorScheme.onSurface
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 },
@@ -310,7 +302,7 @@ private fun SettingsContent(
         Text(
             text = "应用设置",
             style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
         
@@ -331,7 +323,7 @@ private fun SettingsContent(
                 Icon(
                     imageVector = Icons.Default.Storage,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(16.dp))
@@ -371,7 +363,7 @@ private fun SettingsContent(
                 Icon(
                     imageVector = Icons.Default.Label,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(16.dp))
@@ -402,7 +394,7 @@ private fun SettingsContent(
         Text(
             text = "播放设置",
             style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
         
@@ -483,7 +475,7 @@ private fun SettingsContent(
         Text(
             text = "操作",
             style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
         
@@ -530,7 +522,7 @@ private fun SettingsContent(
         Text(
             text = "关于",
             style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
         
@@ -549,7 +541,7 @@ private fun SettingsContent(
                 Icon(
                     imageVector = Icons.Default.Info,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
@@ -666,7 +658,7 @@ private fun SpeedSettingItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -688,7 +680,7 @@ private fun SpeedSettingItem(
             Text(
                 text = formatSpeed(selectedSpeed),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Medium
             )
             
@@ -701,10 +693,7 @@ private fun SpeedSettingItem(
                         text = {
                             Text(
                                 text = formatSpeed(speed),
-                                color = if (speed == selectedSpeed) 
-                                    MaterialTheme.colorScheme.primary 
-                                else 
-                                    MaterialTheme.colorScheme.onSurface,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = if (speed == selectedSpeed) FontWeight.Bold else FontWeight.Normal
                             )
                         },
@@ -760,7 +749,7 @@ private fun SwitchSettingItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -815,7 +804,7 @@ private fun ThresholdSettingItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -836,7 +825,7 @@ private fun ThresholdSettingItem(
             Text(
                 text = formatValue(selectedValue),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.onSurface
             )
             
             DropdownMenu(
@@ -892,7 +881,7 @@ private fun NumberInputSettingItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -912,7 +901,7 @@ private fun NumberInputSettingItem(
         Text(
             text = if (displayValue == 0) "不上报" else "${displayValue}秒",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
     
