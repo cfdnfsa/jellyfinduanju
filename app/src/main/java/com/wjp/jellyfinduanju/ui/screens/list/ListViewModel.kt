@@ -6,12 +6,15 @@ import androidx.lifecycle.viewModelScope
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.repository.DetailRepository
 import com.wjp.jellyfinduanju.data.repository.SeriesRepository
+import com.wjp.jellyfinduanju.data.settings.AppSettings
 import com.wjp.jellyfinduanju.download.DownloadManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.text.Collator
+import java.util.Locale
 
 /**
  * ListViewModel - 剧集列表页面的 ViewModel
@@ -39,6 +42,21 @@ class ListViewModel(
     // ==================== 初始化 ====================
     
     init {
+        // 从 AppSettings 加载排序设置
+        val savedSortType = try {
+            SortType.valueOf(AppSettings.listSortType)
+        } catch (e: Exception) {
+            SortType.UPDATE_TIME
+        }
+        val savedSortAscending = AppSettings.listSortAscending
+        
+        _uiState.update { 
+            it.copy(
+                sortType = savedSortType,
+                sortAscending = savedSortAscending
+            )
+        }
+        
         // 加载本地缓存的剧集列表
         loadLocalSeries()
         
@@ -112,6 +130,47 @@ class ListViewModel(
         applySearchFilter()
     }
     
+    // ==================== 排序功能 ====================
+    
+    /**
+     * 切换排序类型
+     * 
+     * 如果点击的是当前排序类型，则切换排序方向（升序/降序）
+     * 如果点击的是新的排序类型，则使用该类型的默认方向
+     * 
+     * @param newSortType 新的排序类型
+     */
+    fun toggleSortType(newSortType: SortType) {
+        val currentSortType = _uiState.value.sortType
+        val currentAscending = _uiState.value.sortAscending
+        
+        val (finalSortType, finalAscending) = if (newSortType == currentSortType) {
+            // 相同类型，切换方向
+            newSortType to !currentAscending
+        } else {
+            // 不同类型，使用新类型的默认方向
+            val defaultAscending = when (newSortType) {
+                SortType.NAME -> true           // 按名称默认升序（A-Z）
+                SortType.UPDATE_TIME -> false   // 按更新时间默认降序（最新在前）
+                SortType.PLAY_TIME -> false     // 按播放时间默认降序（最近在前）
+            }
+            newSortType to defaultAscending
+        }
+        
+        // 保存到本地
+        AppSettings.listSortType = finalSortType.name
+        AppSettings.listSortAscending = finalAscending
+        
+        // 更新状态并重新排序
+        _uiState.update { 
+            it.copy(
+                sortType = finalSortType,
+                sortAscending = finalAscending
+            )
+        }
+        applySearchFilter()
+    }
+    
     /**
      * 获取所有可用的筛选标签
      * 
@@ -130,16 +189,16 @@ class ListViewModel(
             .sorted()
         
         // 获取自定义标签
-        val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
+        val customTags = AppSettings.customTags
         
         // 按顺序组合：固定系统标签 + 自定义标签 + 文件夹 + 观看状态标签
         return fixedSystemTags + customTags + cloudFolderTags + watchStatusTags
     }
     
     /**
-     * 应用搜索筛选
+     * 应用搜索筛选和排序
      * 
-     * 根据搜索关键词筛选剧集列表
+     * 根据搜索关键词筛选剧集列表，然后应用排序
      * 支持模糊搜索：匹配剧集名称
      */
     private fun applySearchFilter() {
@@ -171,7 +230,7 @@ class ListViewModel(
         }
         
         // 再应用搜索筛选
-        val filteredList = if (query.isEmpty()) {
+        val searchFilteredList = if (query.isEmpty()) {
             tagFilteredList
         } else {
             tagFilteredList.filter { series ->
@@ -180,12 +239,45 @@ class ListViewModel(
             }
         }
         
+        // 最后应用排序
+        val sortedList = applySorting(searchFilteredList)
+        
         _uiState.update { 
             it.copy(
-                seriesList = filteredList,
-                isEmpty = filteredList.isEmpty() && !it.isLoading
+                seriesList = sortedList,
+                isEmpty = sortedList.isEmpty() && !it.isLoading
             ) 
         }
+    }
+    
+    /**
+     * 应用排序
+     * 
+     * @param list 待排序的列表
+     * @return 排序后的列表
+     */
+    private fun applySorting(list: List<SeriesLocalData>): List<SeriesLocalData> {
+        val sortType = _uiState.value.sortType
+        val ascending = _uiState.value.sortAscending
+        
+        val sorted = when (sortType) {
+            SortType.NAME -> {
+                // 按名称排序（使用中文拼音排序）
+                val collator = Collator.getInstance(Locale.CHINESE)
+                list.sortedWith(compareBy(collator) { it.name })
+            }
+            SortType.UPDATE_TIME -> {
+                // 按更新时间排序（使用 lastSyncTime 作为更新时间）
+                list.sortedBy { it.lastSyncTime }
+            }
+            SortType.PLAY_TIME -> {
+                // 按播放时间排序
+                list.sortedBy { it.lastWatchTime }
+            }
+        }
+        
+        // 根据排序方向返回
+        return if (ascending) sorted else sorted.reversed()
     }
     
     // ==================== 刷新操作 ====================
@@ -478,6 +570,15 @@ enum class DialogType {
 }
 
 /**
+ * 排序类型
+ */
+enum class SortType {
+    NAME,           // 按名称
+    UPDATE_TIME,    // 按更新时间
+    PLAY_TIME       // 按播放时间
+}
+
+/**
  * ListUiState - 剧集列表页面的 UI 状态
  */
 data class ListUiState(
@@ -491,7 +592,11 @@ data class ListUiState(
     /** 当前显示的对话框类型 */
     val dialogType: DialogType? = null,
     /** 当前选中的筛选标签 */
-    val selectedFilterTag: String = "全部"
+    val selectedFilterTag: String = "全部",
+    /** 排序类型 */
+    val sortType: SortType = SortType.UPDATE_TIME,
+    /** 排序方向：true = 升序, false = 降序 */
+    val sortAscending: Boolean = false
 )
 
 /**

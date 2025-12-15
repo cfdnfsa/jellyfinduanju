@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,6 +41,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -88,6 +92,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
+import com.wjp.jellyfinduanju.data.settings.AppSettings
 
 /**
  * ListScreen - 剧集列表页面
@@ -141,6 +146,7 @@ fun ListScreen(
         onToggleTag = { tag, selected -> viewModel.toggleSeriesTag(tag, selected) },
         onClearTags = { viewModel.clearSeriesTags() },
         onFilterTagChange = { viewModel.updateFilterTag(it) },
+        onSortTypeChange = { sortType -> viewModel.toggleSortType(sortType) },
         onDismissDialog = { viewModel.hideDialog() },
         onErrorShown = { viewModel.clearError() },
         onSearchQueryChange = { viewModel.updateSearchQuery(it) },
@@ -173,6 +179,7 @@ private fun ListScreenContent(
     onToggleTag: (String, Boolean) -> Unit,
     onClearTags: () -> Unit,
     onFilterTagChange: (String) -> Unit,
+    onSortTypeChange: (SortType) -> Unit,
     onDismissDialog: () -> Unit,
     onErrorShown: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -181,6 +188,7 @@ private fun ListScreenContent(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
+    var showSortMenu by remember { mutableStateOf(false) }
     
     // 显示错误信息
     LaunchedEffect(uiState.error) {
@@ -245,6 +253,97 @@ private fun ListScreenContent(
                     )
                 },
                 actions = {
+                    // 排序按钮
+                    Box {
+                        IconButton(onClick = { showSortMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Sort,
+                                contentDescription = "排序"
+                            )
+                        }
+                        
+                        // 排序菜单
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false }
+                        ) {
+                            // 按名称
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("按名称")
+                                        if (uiState.sortType == SortType.NAME) {
+                                            Icon(
+                                                imageVector = if (uiState.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortTypeChange(SortType.NAME)
+                                    showSortMenu = false
+                                }
+                            )
+                            
+                            // 按更新时间
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("按更新时间")
+                                        if (uiState.sortType == SortType.UPDATE_TIME) {
+                                            Icon(
+                                                imageVector = if (uiState.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortTypeChange(SortType.UPDATE_TIME)
+                                    showSortMenu = false
+                                }
+                            )
+                            
+                            // 按播放时间
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("按播放时间")
+                                        if (uiState.sortType == SortType.PLAY_TIME) {
+                                            Icon(
+                                                imageVector = if (uiState.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortTypeChange(SortType.PLAY_TIME)
+                                    showSortMenu = false
+                                }
+                            )
+                        }
+                    }
+                    
                     // 刷新按钮
                     IconButton(
                         onClick = onRefreshClick,
@@ -298,6 +397,8 @@ private fun ListScreenContent(
                         SeriesGrid(
                             seriesList = uiState.seriesList,
                             selectedSeries = uiState.selectedSeries,
+                            sortType = uiState.sortType,
+                            sortAscending = uiState.sortAscending,
                             onSeriesClick = onSeriesClick,
                             onSeriesLongClick = onSeriesLongClick,
                             onDismissMenu = onDismissMenu,
@@ -363,7 +464,7 @@ private fun ListScreenContent(
             
             DialogType.SET_TAG -> {
                 // 标签选择对话框（多选）
-                val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
+                val customTags = AppSettings.customTags
                 AlertDialog(
                     onDismissRequest = onDismissDialog,
                     title = { Text("设置标签") },
@@ -493,7 +594,7 @@ private fun TagFilterBar(
     selectedTag: String,
     onTagSelected: (String) -> Unit
 ) {
-    val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
+    val customTags = AppSettings.customTags
 
     LazyRow(
         modifier = Modifier
@@ -584,6 +685,8 @@ private fun TagFilterBar(
 private fun SeriesGrid(
     seriesList: List<SeriesLocalData>,
     selectedSeries: SeriesLocalData?,
+    sortType: SortType,
+    sortAscending: Boolean,
     onSeriesClick: (SeriesLocalData) -> Unit,
     onSeriesLongClick: (SeriesLocalData) -> Unit,
     onDismissMenu: () -> Unit,
@@ -594,8 +697,18 @@ private fun SeriesGrid(
     onSetTag: () -> Unit,
     getImageUrl: (String, (String?) -> Unit) -> Unit
 ) {
+    val gridState = rememberLazyGridState()
+    
+    // 监听排序变化，滚动到顶部
+    LaunchedEffect(sortType, sortAscending) {
+        if (seriesList.isNotEmpty()) {
+            gridState.scrollToItem(0)
+        }
+    }
+    
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),  // 固定一行三个
+        state = gridState,
         contentPadding = PaddingValues(8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -603,7 +716,8 @@ private fun SeriesGrid(
     ) {
         items(
             items = seriesList,
-            key = { it.id }
+            key = { it.id },
+            contentType = { "series_card" }
         ) { series ->
             SeriesGridItem(
                 series = series,

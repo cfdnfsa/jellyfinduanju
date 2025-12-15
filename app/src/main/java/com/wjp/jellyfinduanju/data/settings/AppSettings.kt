@@ -160,6 +160,29 @@ object AppSettings {
             mmkv.encode(Keys.CUSTOM_TAGS, value.joinToString(","))
         }
     
+    // ==================== 列表排序设置 ====================
+    
+    /**
+     * 列表排序类型
+     * 默认：按更新时间降序
+     */
+    var listSortType: String
+        get() = mmkv.decodeString(Keys.LIST_SORT_TYPE) ?: "UPDATE_TIME"
+        set(value) {
+            mmkv.encode(Keys.LIST_SORT_TYPE, value)
+        }
+    
+    /**
+     * 列表排序方向
+     * true = 升序, false = 降序
+     * 默认：降序（最新在前）
+     */
+    var listSortAscending: Boolean
+        get() = mmkv.decodeBool(Keys.LIST_SORT_ASCENDING, false)
+        set(value) {
+            mmkv.encode(Keys.LIST_SORT_ASCENDING, value)
+        }
+    
     /**
      * 添加自定义标签
      */
@@ -187,6 +210,8 @@ object AppSettings {
         const val SWIPE_THRESHOLD = "swipe_threshold"
         const val REPORT_INTERVAL = "report_interval"
         const val CUSTOM_TAGS = "custom_tags"
+        const val LIST_SORT_TYPE = "list_sort_type"
+        const val LIST_SORT_ASCENDING = "list_sort_ascending"
     }
     
     /**
