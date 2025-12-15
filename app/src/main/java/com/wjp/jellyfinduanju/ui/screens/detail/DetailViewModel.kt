@@ -235,8 +235,6 @@ class DetailViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true, error = null) }
             
-            android.util.Log.d("DetailViewModel", "syncFromServer: 开始同步 seriesId=${series.id}")
-            
             // 强制刷新季列表
             val seasonsResult = detailRepository.refreshSeasons(series.id)
             
@@ -251,10 +249,6 @@ class DetailViewModel(
                         val episodesResult = detailRepository.refreshEpisodes(series.id, season.id)
                         episodesResult.fold(
                             onSuccess = { episodes ->
-                                android.util.Log.d("DetailViewModel", "syncFromServer: 季${season.seasonNumber} 获取到 ${episodes.size} 集")
-                                episodes.take(3).forEach { ep ->
-                                    android.util.Log.d("DetailViewModel", "  第${ep.episodeNumber}集: played=${ep.played}, positionTicks=${ep.playbackPositionTicks}, runTimeTicks=${ep.runTimeTicks}, percent=${ep.getProgressPercent()}%")
-                                }
                                 _uiState.update { state ->
                                     val updatedEpisodes = state.episodesBySeasonId.toMutableMap()
                                     updatedEpisodes[season.id] = episodes

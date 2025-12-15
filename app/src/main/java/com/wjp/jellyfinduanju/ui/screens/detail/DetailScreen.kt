@@ -672,38 +672,48 @@ private fun EpisodeGroupHeader(
             
             // 分组标题
             Text(
-                text = "第$startEpisode-${endEpisode}集",
+                text = if (startEpisode == -1) {
+                    "未知集号"
+                } else {
+                    "第$startEpisode-${endEpisode}集"
+                },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
         }
         
         // 中间：进度点（居中）
-        Box(
-            modifier = Modifier.weight(1f),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                verticalAlignment = Alignment.CenterVertically
+        // 未知集号分组不显示进度点，避免数量过多导致混乱
+        if (startEpisode != -1) {
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.Center
             ) {
-                episodes.take(10).forEach { episode ->
-                    val dotColor = when {
-                        episode.played -> Color(0xFF4CAF50)  // 绿色 - 已看完
-                        episode.playbackPositionTicks > 0 -> Color(0xFFFFC107)  // 黄色 - 正在看
-                        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)  // 灰色 - 未看
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    episodes.take(10).forEach { episode ->
+                        val dotColor = when {
+                            episode.played -> Color(0xFF4CAF50)  // 绿色 - 已看完
+                            episode.playbackPositionTicks > 0 -> Color(0xFFFFC107)  // 黄色 - 正在看
+                            else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)  // 灰色 - 未看
+                        }
+                        
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(
+                                    color = dotColor,
+                                    shape = CircleShape
+                                )
+                        )
                     }
-                    
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .background(
-                                color = dotColor,
-                                shape = CircleShape
-                            )
-                    )
                 }
             }
+        } else {
+            // 未知集号分组：只显示空白占位
+            Spacer(modifier = Modifier.weight(1f))
         }
         
         // 右侧：已看数量 + 展开图标
@@ -774,25 +784,39 @@ private fun SeasonSection(
         // 分组大小
         val groupSize = 10
         
-        // 计算分组数量
-        val totalEpisodes = sortedEpisodes.size
-        if (totalEpisodes == 0) return
+        // 如果没有剧集，不显示
+        if (sortedEpisodes.isEmpty()) return
         
-        // 按10集分组
+        // 分离出集号异常的剧集（episodeNumber <= 0）
+        val unknownEpisodes = sortedEpisodes.filter { it.episodeNumber <= 0 }
+        val normalEpisodes = sortedEpisodes.filter { it.episodeNumber > 0 }
+        
+        // 按固定的1-10、11-20、21-30分组
         val groups = mutableListOf<Pair<IntRange, List<EpisodeLocalData>>>()
-        var startEpisode = 1
         
-        while (startEpisode <= totalEpisodes) {
-            val endEpisode = minOf(startEpisode + groupSize - 1, totalEpisodes)
-            val groupEpisodes = sortedEpisodes.filter { 
-                it.episodeNumber in startEpisode..endEpisode 
-            }
+        // 如果有集号异常的剧集，先添加"未知集号"分组
+        if (unknownEpisodes.isNotEmpty()) {
+            groups.add(Pair(-1..-1, unknownEpisodes))  // 使用 -1..-1 表示未知集号分组
+        }
+        
+        // 处理正常集号的剧集
+        if (normalEpisodes.isNotEmpty()) {
+            val maxEpisodeNumber = normalEpisodes.maxOfOrNull { it.episodeNumber } ?: 0
+            var startEpisode = 1
             
-            if (groupEpisodes.isNotEmpty()) {
-                groups.add(Pair(startEpisode..endEpisode, groupEpisodes))
+            while (startEpisode <= maxEpisodeNumber) {
+                val endEpisode = minOf(startEpisode + groupSize - 1, maxEpisodeNumber)
+                val groupEpisodes = normalEpisodes.filter { 
+                    it.episodeNumber in startEpisode..endEpisode 
+                }
+                
+                // 只添加有剧集的分组
+                if (groupEpisodes.isNotEmpty()) {
+                    groups.add(Pair(startEpisode..endEpisode, groupEpisodes))
+                }
+                
+                startEpisode += groupSize
             }
-            
-            startEpisode += groupSize
         }
         
         // 显示每个分组
