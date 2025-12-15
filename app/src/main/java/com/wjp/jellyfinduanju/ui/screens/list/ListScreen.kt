@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -54,6 +56,10 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,6 +81,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -160,7 +168,7 @@ fun ListScreen(
 /**
  * ListScreenContent - 列表页面内容（无状态组件）
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ListScreenContent(
     uiState: ListUiState,
@@ -195,6 +203,25 @@ private fun ListScreenContent(
         uiState.error?.let { error ->
             snackbarHostState.showSnackbar(error)
             onErrorShown()
+        }
+    }
+    
+    // 获取所有标签
+    val allTags = allFilterTags
+    val selectedIndex = allTags.indexOf(uiState.selectedFilterTag).coerceAtLeast(0)
+    val pagerState = rememberPagerState(
+        initialPage = selectedIndex,
+        pageCount = { allTags.size }
+    )
+    val coroutineScope = rememberCoroutineScope()
+    
+    // 监听 pager 变化，同步到标签选择
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage < allTags.size) {
+            val newTag = allTags[pagerState.currentPage]
+            if (newTag != uiState.selectedFilterTag) {
+                onFilterTagChange(newTag)
+            }
         }
     }
     
@@ -376,39 +403,52 @@ private fun ListScreenContent(
         ) {
             // 标签筛选栏（始终显示）
             TagFilterBar(
-                allTags = allFilterTags,
+                allTags = allTags,
                 selectedTag = uiState.selectedFilterTag,
-                onTagSelected = onFilterTagChange
+                onTagSelected = { tag ->
+                    val index = allTags.indexOf(tag)
+                    if (index >= 0) {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(index)
+                        }
+                    }
+                }
             )
             
-            // 内容区域
-            Box(modifier = Modifier.fillMaxSize()) {
-                when {
-                    // 加载中且列表为空
-                    uiState.isLoading && uiState.seriesList.isEmpty() -> {
-                        LoadingContent()
-                    }
-                    // 列表为空
-                    uiState.isEmpty && !uiState.isLoading -> {
-                        EmptyContent(onRefreshClick = onRefreshClick)
-                    }
-                    // 显示列表
-                    else -> {
-                        SeriesGrid(
-                            seriesList = uiState.seriesList,
-                            selectedSeries = uiState.selectedSeries,
-                            sortType = uiState.sortType,
-                            sortAscending = uiState.sortAscending,
-                            onSeriesClick = onSeriesClick,
-                            onSeriesLongClick = onSeriesLongClick,
-                            onDismissMenu = onDismissMenu,
-                            onMarkAsWatched = onMarkAsWatched,
-                            onMarkAsUnwatched = onMarkAsUnwatched,
-                            onCacheAll = onCacheAll,
-                            onDeleteAllCache = onDeleteAllCache,
-                            onSetTag = onSetTag,
-                            getImageUrl = getImageUrl
-                        )
+            // 横向滑动的内容区域
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                // 每个页面显示对应标签筛选后的内容
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when {
+                        // 加载中且列表为空
+                        uiState.isLoading && uiState.seriesList.isEmpty() -> {
+                            LoadingContent()
+                        }
+                        // 列表为空
+                        uiState.isEmpty && !uiState.isLoading -> {
+                            EmptyContent(onRefreshClick = onRefreshClick)
+                        }
+                        // 显示列表
+                        else -> {
+                            SeriesGrid(
+                                seriesList = uiState.seriesList,
+                                selectedSeries = uiState.selectedSeries,
+                                sortType = uiState.sortType,
+                                sortAscending = uiState.sortAscending,
+                                onSeriesClick = onSeriesClick,
+                                onSeriesLongClick = onSeriesLongClick,
+                                onDismissMenu = onDismissMenu,
+                                onMarkAsWatched = onMarkAsWatched,
+                                onMarkAsUnwatched = onMarkAsUnwatched,
+                                onCacheAll = onCacheAll,
+                                onDeleteAllCache = onDeleteAllCache,
+                                onSetTag = onSetTag,
+                                getImageUrl = getImageUrl
+                            )
+                        }
                     }
                 }
             }
@@ -584,9 +624,9 @@ private fun ListScreenContent(
 }
 
 /**
- * TagFilterBar - 标签筛选栏
+ * TagFilterBar - 标签筛选栏（可滑动的 Tab 样式）
  *
- * 横向滚动显示所有可用标签
+ * 使用 ScrollableTabRow 实现，带有选中指示器
  */
 @Composable
 private fun TagFilterBar(
@@ -595,82 +635,59 @@ private fun TagFilterBar(
     onTagSelected: (String) -> Unit
 ) {
     val customTags = AppSettings.customTags
+    val selectedIndex = allTags.indexOf(selectedTag).coerceAtLeast(0)
 
-    LazyRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(allTags.size) { index ->
-            val tag = allTags[index]
-            val isSelected = tag == selectedTag
-
-            // 根据标签类型设置不同颜色
-            val (containerColor, labelColor, icon) = when {
-                tag == "全部" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    null
-                )
-                tag == "正在看" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.PlayCircle
-                )
-                tag == "已缓存" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.Download
-                )
-                tag == "未看" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.VisibilityOff
-                )
-                tag == "已看" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.CheckCircle
-                )
-                tag in customTags -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.Label
-                )
-                // 其他的都是云端文件夹标签
-                else -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.Folder
+    ScrollableTabRow(
+        selectedTabIndex = selectedIndex,
+        modifier = Modifier.fillMaxWidth(),
+        edgePadding = 8.dp,
+        indicator = { tabPositions ->
+            if (selectedIndex < tabPositions.size) {
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedIndex]),
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
+        },
+        divider = {}  // 移除默认的分割线
+    ) {
+        allTags.forEachIndexed { index, tag ->
+            val isSelected = tag == selectedTag
             
-            FilterChip(
+            // 根据标签类型获取图标
+            val icon = when {
+                tag == "全部" -> null
+                tag == "正在看" -> Icons.Default.PlayCircle
+                tag == "已缓存" -> Icons.Default.Download
+                tag == "未看" -> Icons.Default.VisibilityOff
+                tag == "已看" -> Icons.Default.CheckCircle
+                tag in customTags -> Icons.Default.Label
+                else -> Icons.Default.Folder  // 云端文件夹标签
+            }
+            
+            Tab(
                 selected = isSelected,
                 onClick = { onTagSelected(tag) },
-                label = { 
-                    Text(
-                        text = tag,
-                        style = MaterialTheme.typography.labelMedium
-                    ) 
-                },
-                leadingIcon = icon?.let { iconVector ->
-                    {
-                        Icon(
-                            imageVector = iconVector,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                text = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        icon?.let {
+                            Icon(
+                                imageVector = it,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = tag,
+                            style = MaterialTheme.typography.labelLarge
                         )
                     }
                 },
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    selectedContainerColor = containerColor,
-                    selectedLabelColor = labelColor,
-                    selectedLeadingIconColor = labelColor
-                )
+                selectedContentColor = MaterialTheme.colorScheme.primary,
+                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
