@@ -347,15 +347,7 @@ private fun MainNavHost(
         // 本地文件夹管理页面
         composable(Routes.LOCAL_FOLDER_MANAGE) {
             LocalFolderManageScreen(
-                onBack = { navController.popBackStack() },
-                onDeleteFolder = { folderUri ->
-                    // TODO: 删除该文件夹下的所有剧集数据
-                    // seriesRepository.deleteLocalFolderSeries(folderUri)
-                },
-                onScanFolder = { folderUri ->
-                    // TODO: 扫描该文件夹
-                    // 后续实现扫描功能
-                }
+                onBack = { navController.popBackStack() }
             )
         }
         
@@ -413,6 +405,7 @@ private fun MainNavHost(
                 val playerViewModel: PlayerViewModel = viewModel(
                     factory = PlayerViewModelFactory(
                         detailRepository = JellyfinApp.instance.detailRepository,
+                        seriesRepository = JellyfinApp.instance.seriesRepository,
                         series = series,
                         initialEpisodeId = episodeId
                     )

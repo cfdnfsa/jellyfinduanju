@@ -1,13 +1,18 @@
 package com.wjp.jellyfinduanju.data.repository
 
+import android.content.Context
 import android.os.Build
 import com.wjp.jellyfinduanju.data.local.EpisodeDataStore
 import com.wjp.jellyfinduanju.data.local.SeriesDataStore
+import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
 import com.wjp.jellyfinduanju.data.model.MediaItem
+import com.wjp.jellyfinduanju.data.model.SeasonLocalData
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.network.JellyfinAuthHeader
 import com.wjp.jellyfinduanju.data.network.NetworkModule
 import com.wjp.jellyfinduanju.util.ImageCacheUtils
+import com.wjp.jellyfinduanju.util.LocalFolderParser
+import com.wjp.jellyfinduanju.util.LocalProgressManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -24,12 +29,15 @@ import java.util.TimeZone
  * 2. 管理本地剧集数据缓存
  * 3. 下载和管理剧集图片
  * 4. 处理刷新逻辑（清理不存在的剧集）
+ * 5. 本地文件夹导入和管理
  * 
+ * @property context 应用上下文
  * @property seriesDataStore 剧集本地存储
  * @property episodeDataStore 剧集详情本地存储（季/集数据）
  * @property authRepository 认证仓库（获取服务器信息和用户信息）
  */
 class SeriesRepository(
+    private val context: Context,
     private val seriesDataStore: SeriesDataStore,
     private val episodeDataStore: EpisodeDataStore,
     private val authRepository: AuthRepository
@@ -585,6 +593,213 @@ class SeriesRepository(
      */
     fun isSeriesDeletedFromServer(seriesId: String): Boolean {
         return seriesDataStore.getSeries(seriesId)?.isDeletedFromServer ?: false
+    }
+    
+    // ==================== 本地文件夹管理 ====================
+    
+    /**
+     * 扫描本地文件夹并导入剧集
+     * 
+     * @param folderUri 用户选择的文件夹 URI（SAF URI）
+     * @param folderName 文件夹显示名称
+     * @return 成功返回识别到的剧集列表，失败返回异常
+     */
+    suspend fun scanLocalFolder(
+        folderUri: String,
+        folderName: String
+    ): Result<List<SeriesLocalData>> = withContext(Dispatchers.IO) {
+        try {
+            // 使用 LocalFolderParser 解析文件夹
+            val parsedSeriesList = LocalFolderParser.parseFolder(
+                context = context,
+                folderUri = android.net.Uri.parse(folderUri),
+                rootFolderName = folderName
+            )
+            
+            if (parsedSeriesList.isEmpty()) {
+                return@withContext Result.failure(Exception("未找到任何剧集"))
+            }
+            
+            // 保存剧集数据到本地存储
+            val seriesList = mutableListOf<SeriesLocalData>()
+            parsedSeriesList.forEach { parsedSeries ->
+                // 保存 SeriesLocalData
+                seriesDataStore.saveSeries(parsedSeries.series)
+                seriesList.add(parsedSeries.series)
+                
+                // 为本地导入的剧集创建一个默认的 Season（本地剧集不区分季）
+                val defaultSeason = SeasonLocalData(
+                    id = parsedSeries.series.id, // 使用相同的 ID
+                    seriesId = parsedSeries.series.id,
+                    name = parsedSeries.series.name,
+                    seasonNumber = 1,
+                    episodeCount = parsedSeries.episodes.size
+                )
+                
+                // 保存 Season
+                episodeDataStore.saveSeasons(parsedSeries.series.id, listOf(defaultSeason))
+                
+                // 读取现有的进度文件（如果有）
+                val existingProgress = LocalProgressManager.readProgress(
+                    context = context,
+                    seriesFolderUri = parsedSeries.series.localFolderPath ?: ""
+                )
+                
+                // 如果有现有进度，更新 episodes 的播放进度
+                val finalEpisodes = if (existingProgress != null) {
+                    parsedSeries.episodes.map { episode ->
+                        val progress = existingProgress.episodes.find { 
+                            it.episodeNumber == episode.episodeNumber 
+                        }
+                        if (progress != null) {
+                            episode.copy(
+                                playbackPositionTicks = progress.playbackPositionTicks,
+                                runTimeTicks = progress.runTimeTicks,
+                                played = progress.played,
+                                lastPlayedDate = progress.lastPlayedDate
+                            )
+                        } else {
+                            episode
+                        }
+                    }
+                } else {
+                    parsedSeries.episodes
+                }
+                
+                // 保存剧集列表（使用 defaultSeason.id 作为 seasonId）
+                episodeDataStore.saveEpisodes(defaultSeason.id, finalEpisodes)
+            }
+            
+            Result.success(seriesList)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(Exception("扫描失败: ${e.message}"))
+        }
+    }
+    
+    /**
+     * 删除指定文件夹下的所有本地剧集（仅删除应用内缓存，不删除实际文件）
+     * 
+     * @param folderUri 文件夹 URI
+     */
+    suspend fun deleteLocalFolderSeries(folderUri: String) = withContext(Dispatchers.IO) {
+        try {
+            // 获取所有剧集
+            val allSeries = seriesDataStore.getAllSeries()
+            
+            // 找出该文件夹下的所有剧集
+            val localSeries = allSeries.filter { 
+                it.isLocalImport && it.localFolderPath?.startsWith(folderUri) == true
+            }
+            
+            // 删除这些剧集的缓存数据
+            localSeries.forEach { series ->
+                deleteSeriesAndCleanup(series.id)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+    
+    /**
+     * 获取所有本地导入的剧集
+     * 
+     * @return 本地剧集列表
+     */
+    fun getLocalImportedSeries(): List<SeriesLocalData> {
+        return seriesDataStore.getAllSeries().filter { it.isLocalImport }
+    }
+    
+    /**
+     * 获取指定文件夹下的所有本地剧集
+     * 
+     * @param folderUri 文件夹 URI
+     * @return 该文件夹下的剧集列表
+     */
+    fun getLocalSeriesByFolder(folderUri: String): List<SeriesLocalData> {
+        return seriesDataStore.getAllSeries().filter { 
+            it.isLocalImport && it.localFolderPath?.startsWith(folderUri) == true
+        }
+    }
+    
+    /**
+     * 删除单个本地导入的剧集及其所有相关缓存
+     *
+     * 包括：
+     * 1. SeriesLocalData（列表数据）
+     * 2. EpisodeDataStore（季/集数据）
+     * 3. 图片缓存
+     * 4. 进度文件
+     *
+     * @param seriesId 剧集 ID
+     */
+    suspend fun deleteLocalSeriesAndCleanup(seriesId: String) = withContext(Dispatchers.IO) {
+        val series = seriesDataStore.getSeries(seriesId) ?: return@withContext
+
+        // 1. 清理详情缓存（季和剧集）
+        val seasons = episodeDataStore.getSeasons(seriesId)
+        val seasonIds = seasons?.map { it.id } ?: emptyList()
+        episodeDataStore.clearSeriesCache(seriesId, seasonIds)
+
+        // 2. 删除列表数据
+        seriesDataStore.deleteSeries(seriesId)
+
+        // 3. 删除图片缓存
+        ImageCacheUtils.deleteLocalImage(seriesId)
+
+        // 4. 删除进度文件
+        series.localFolderPath?.let { path ->
+            LocalProgressManager.deleteProgress(context, path)
+        }
+    }
+    
+    /**
+     * 更新本地导入剧集的播放进度到文件
+     *
+     * @param seriesId 剧集 ID
+     * @param updatedEpisode 更新后的剧集数据
+     * @param allEpisodes 该剧集的所有剧集列表
+     */
+    suspend fun updateLocalSeriesProgress(
+        seriesId: String,
+        updatedEpisode: EpisodeLocalData,
+        allEpisodes: List<EpisodeLocalData>
+    ) = withContext(Dispatchers.IO) {
+        val series = seriesDataStore.getSeries(seriesId) ?: return@withContext
+        if (!series.isLocalImport) return@withContext // 只处理本地导入的
+
+        series.localFolderPath?.let { folderPath ->
+            LocalProgressManager.updateEpisodeProgress(
+                context,
+                folderPath,          // seriesFolderUri
+                seriesId,            // seriesId
+                series.name,         // seriesName
+                updatedEpisode,      // episode
+                allEpisodes          // allEpisodes
+            )
+        }
+    }
+    
+    /**
+     * 刷新本地文件夹（重新扫描）
+     * 
+     * @param folderUri 文件夹 URI
+     * @param folderName 文件夹名称
+     * @return 成功返回剧集列表，失败返回异常
+     */
+    suspend fun refreshLocalFolder(
+        folderUri: String,
+        folderName: String
+    ): Result<List<SeriesLocalData>> = withContext(Dispatchers.IO) {
+        try {
+            // 先删除该文件夹下的旧数据（仅缓存）
+            deleteLocalFolderSeries(folderUri)
+            
+            // 重新扫描
+            scanLocalFolder(folderUri, folderName)
+        } catch (e: Exception) {
+            Result.failure(Exception("刷新失败: ${e.message}"))
+        }
     }
     
     /**

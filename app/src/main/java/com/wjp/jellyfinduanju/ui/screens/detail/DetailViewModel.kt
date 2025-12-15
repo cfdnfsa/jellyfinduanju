@@ -228,8 +228,18 @@ class DetailViewModel(
      * 
      * 从服务器获取最新数据（播放进度、是否看完等），保留本地缓存状态
      * 用户点击同步按钮时调用
+     * 
+     * 本地导入的剧集不支持此功能
      */
     fun syncFromServer() {
+        // 本地导入的剧集不支持从服务器同步
+        if (series.isLocalImport) {
+            _uiState.update { 
+                it.copy(error = "本地剧集无需同步")
+            }
+            return
+        }
+        
         if (_uiState.value.isRefreshing) return
         
         viewModelScope.launch {
@@ -281,8 +291,22 @@ class DetailViewModel(
      * 
      * 将本地保存的播放进度上报到服务器
      * 用户点击上报按钮时调用
+     * 
+     * 本地导入的剧集不支持此功能
      */
     fun uploadProgressToServer() {
+        // 本地导入的剧集不支持上报进度到服务器
+        if (series.isLocalImport) {
+            viewModelScope.launch {
+                _uiState.update { 
+                    it.copy(uploadResult = "本地剧集无需上报")
+                }
+                kotlinx.coroutines.delay(3000)
+                _uiState.update { it.copy(uploadResult = null) }
+            }
+            return
+        }
+        
         if (_uiState.value.isUploading) return
         
         viewModelScope.launch {
@@ -324,6 +348,9 @@ class DetailViewModel(
     
     /**
      * 确认标记剧集为已看完
+     * 
+     * 本地导入的剧集：只更新本地数据和进度文件，不请求接口
+     * 云端剧集：同时更新服务器和本地
      */
     fun confirmMarkAsPlayed() {
         val episode = _uiState.value.episodeToMark ?: return
@@ -331,16 +358,34 @@ class DetailViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isMarkingPlayed = true) }
             
-            val result = if (episode.played) {
-                // 如果已看完，则取消标记
-                detailRepository.unmarkAsPlayed(episode.id, episode.seasonId)
-            } else {
-                // 如果未看完，则标记为已看完
-                detailRepository.markAsPlayed(episode.id, episode.seasonId)
-            }
-            
-            result.fold(
-                onSuccess = {
+            if (series.isLocalImport) {
+                // 本地导入的剧集：只更新本地数据
+                try {
+                    val newPlayedStatus = !episode.played
+                    val updatedEpisode = episode.copy(
+                        played = newPlayedStatus,
+                        playbackPositionTicks = if (newPlayedStatus) 0 else episode.playbackPositionTicks,
+                        lastPlayedDate = System.currentTimeMillis()
+                    )
+                    
+                    // 更新 EpisodeDataStore
+                    detailRepository.updateEpisodeLocalOnly(updatedEpisode)
+                    
+                    // 写入进度文件（从数据库读取最新数据）
+                    series.localFolderPath?.let { folderPath ->
+                        val result = detailRepository.getEpisodes(series.id, episode.seasonId)
+                        result.onSuccess { latestEpisodes ->
+                            val latestUpdatedEpisode = latestEpisodes.find { it.id == episode.id }
+                            if (latestUpdatedEpisode != null) {
+                                seriesRepository.updateLocalSeriesProgress(
+                                    series.id,
+                                    latestUpdatedEpisode,
+                                    latestEpisodes
+                                )
+                            }
+                        }
+                    }
+                    
                     // 更新本地状态
                     _uiState.update { state ->
                         val updatedEpisodes = state.episodesBySeasonId.toMutableMap()
@@ -349,7 +394,7 @@ class DetailViewModel(
                         seasonEpisodes?.let { list ->
                             val index = list.indexOfFirst { it.id == episode.id }
                             if (index != -1) {
-                                list[index] = episode.copy(played = !episode.played)
+                                list[index] = updatedEpisode
                                 updatedEpisodes[episode.seasonId] = list
                             }
                         }
@@ -360,16 +405,56 @@ class DetailViewModel(
                             episodeToMark = null
                         )
                     }
-                },
-                onFailure = { exception ->
+                } catch (e: Exception) {
                     _uiState.update { 
                         it.copy(
                             isMarkingPlayed = false,
-                            error = exception.message ?: "标记失败"
+                            error = "标记失败: ${e.message}"
                         )
                     }
                 }
-            )
+            } else {
+                // 云端剧集：调用 API
+                val result = if (episode.played) {
+                    // 如果已看完，则取消标记
+                    detailRepository.unmarkAsPlayed(episode.id, episode.seasonId)
+                } else {
+                    // 如果未看完，则标记为已看完
+                    detailRepository.markAsPlayed(episode.id, episode.seasonId)
+                }
+                
+                result.fold(
+                    onSuccess = {
+                        // 更新本地状态
+                        _uiState.update { state ->
+                            val updatedEpisodes = state.episodesBySeasonId.toMutableMap()
+                            val seasonEpisodes = updatedEpisodes[episode.seasonId]?.toMutableList()
+                            
+                            seasonEpisodes?.let { list ->
+                                val index = list.indexOfFirst { it.id == episode.id }
+                                if (index != -1) {
+                                    list[index] = episode.copy(played = !episode.played)
+                                    updatedEpisodes[episode.seasonId] = list
+                                }
+                            }
+                            
+                            state.copy(
+                                episodesBySeasonId = updatedEpisodes,
+                                isMarkingPlayed = false,
+                                episodeToMark = null
+                            )
+                        }
+                    },
+                    onFailure = { exception ->
+                        _uiState.update { 
+                            it.copy(
+                                isMarkingPlayed = false,
+                                error = exception.message ?: "标记失败"
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
     
@@ -377,8 +462,16 @@ class DetailViewModel(
     
     /**
      * 进入缓存选择模式
+     * 
+     * 本地导入的剧集不支持此功能
      */
     fun enterCacheSelectMode() {
+        // 本地导入的剧集不需要缓存
+        if (series.isLocalImport) {
+            _uiState.update { it.copy(error = "本地剧集无需缓存") }
+            return
+        }
+        
         _uiState.update { 
             it.copy(
                 isCacheSelectMode = true,
@@ -390,8 +483,16 @@ class DetailViewModel(
     
     /**
      * 进入删除缓存选择模式
+     * 
+     * 本地导入的剧集不支持此功能
      */
     fun enterDeleteSelectMode() {
+        // 本地导入的剧集不由应用管理文件
+        if (series.isLocalImport) {
+            _uiState.update { it.copy(error = "本地剧集文件由用户管理") }
+            return
+        }
+        
         _uiState.update { 
             it.copy(
                 isCacheSelectMode = false,

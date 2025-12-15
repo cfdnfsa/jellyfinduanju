@@ -205,16 +205,32 @@ data class SeriesLocalData(
     /** 用户自定义标签（多选，本地设置，不受同步影响） */
     val customTags: List<String> = emptyList(),
     /** 云端文件夹标签（从 Jellyfin 同步的文件夹名称） */
-    val cloudFolderTag: String? = null
+    val cloudFolderTag: String? = null,
+    
+    // ==================== 本地导入专用字段 ====================
+    /** 是否为本地导入的剧集（true=本地导入，false=云端同步） */
+    val isLocalImport: Boolean = false,
+    /** 本地文件夹路径（完整 URI，仅本地导入时使用） */
+    val localFolderPath: String? = null,
+    /** 本地文件夹标签（根文件夹名称，用于筛选） */
+    val localFolderTag: String? = null,
+    /** 添加时间（本地导入时记录） */
+    val addTime: Long = 0
 ) {
     /**
-     * 获取所有标签（本地 + 云端）
+     * 获取所有标签（本地 + 云端 + 自定义）
      */
     fun getAllTags(): List<String> {
         val tags = customTags.toMutableList()
         cloudFolderTag?.let { if (it !in tags) tags.add(it) }
+        localFolderTag?.let { if (it !in tags) tags.add(it) }
         return tags
     }
+    
+    /**
+     * 判断是否为云端剧集
+     */
+    fun isCloudSeries(): Boolean = !isLocalImport
     
     companion object {
         /**
@@ -239,6 +255,54 @@ data class SeriesLocalData(
                 played = item.userData?.played ?: false,
                 lastWatchPositionTicks = item.userData?.playbackPositionTicks ?: 0,
                 lastWatchTime = 0 // lastPlayedDate 需要解析，暂时设为 0
+            )
+        }
+        
+        /**
+         * 从本地文件夹创建剧集数据
+         * 
+         * @param folderName 文件夹名称（作为剧集名称）
+         * @param folderPath 文件夹完整 URI
+         * @param coverImagePath 封面图片路径（可选）
+         * @param episodeCount 视频文件数量
+         * @param rootFolderName 根文件夹名称（用作标签）
+         * @param parentFolderName 父文件夹名称（用作自动标签，可选）
+         * @return 本地导入的剧集数据
+         */
+        fun fromLocalFolder(
+            folderName: String,
+            folderPath: String,
+            coverImagePath: String? = null,
+            episodeCount: Int,
+            rootFolderName: String,
+            parentFolderName: String? = null
+        ): SeriesLocalData {
+            // 使用文件夹路径的 hash 作为 ID
+            val id = "local_${folderPath.hashCode()}"
+            
+            // 自动标签：如果有父文件夹名称，添加到 customTags
+            val autoTags = if (parentFolderName != null) {
+                listOf(parentFolderName)
+            } else {
+                emptyList()
+            }
+            
+            return SeriesLocalData(
+                id = id,
+                name = folderName,
+                overview = "本地导入：$rootFolderName",
+                type = "LocalSeries",
+                localImagePath = coverImagePath,
+                episodeCount = episodeCount,
+                lastSyncTime = System.currentTimeMillis(),
+                isVideoCached = true,  // 本地导入默认已缓存
+                customTags = autoTags,  // 自动添加父文件夹名称作为标签
+                
+                // 本地导入专用字段
+                isLocalImport = true,
+                localFolderPath = folderPath,
+                localFolderTag = rootFolderName,
+                addTime = System.currentTimeMillis()
             )
         }
     }
@@ -322,7 +386,13 @@ data class EpisodeLocalData(
     val playCount: Int = 0,
     val lastPlayedDate: Long = 0,
     val isCached: Boolean = false,
-    val localVideoPath: String? = null
+    val localVideoPath: String? = null,
+    
+    // ==================== 本地文件专用字段 ====================
+    /** 文件大小（字节，用于显示） */
+    val fileSize: Long = 0,
+    /** 文件格式（扩展名：mp4, mkv, avi 等） */
+    val fileFormat: String? = null
 ) {
     /**
      * 计算播放进度百分比
@@ -361,6 +431,11 @@ data class EpisodeLocalData(
         }
     }
     
+    /**
+     * 判断是否为本地文件
+     */
+    fun isLocalFile(): Boolean = !localVideoPath.isNullOrEmpty()
+    
     companion object {
         /**
          * 从 API 响应的 MediaItem 创建剧集数据
@@ -380,6 +455,49 @@ data class EpisodeLocalData(
                 playbackPositionTicks = item.userData?.playbackPositionTicks ?: 0,
                 playCount = item.userData?.playCount ?: 0,
                 lastPlayedDate = 0 // 需要解析 item.userData?.lastPlayedDate
+            )
+        }
+        
+        /**
+         * 从本地视频文件创建剧集数据
+         * 
+         * @param seriesId 所属剧集 ID
+         * @param fileName 文件名（不含扩展名，作为剧集名称）
+         * @param filePath 完整文件 URI
+         * @param episodeNumber 集数索引（从1开始）
+         * @param fileSize 文件大小（字节）
+         * @param fileFormat 文件格式（扩展名）
+         * @return 本地文件的剧集数据
+         */
+        fun fromLocalFile(
+            seriesId: String,
+            fileName: String,
+            filePath: String,
+            episodeNumber: Int,
+            fileSize: Long = 0,
+            fileFormat: String? = null
+        ): EpisodeLocalData {
+            // 使用文件路径的 hash 作为 ID
+            val id = "local_episode_${filePath.hashCode()}"
+            
+            return EpisodeLocalData(
+                id = id,
+                seriesId = seriesId,
+                seasonId = seriesId,  // 本地导入不区分季，seasonId 等于 seriesId
+                name = fileName,
+                episodeNumber = episodeNumber,
+                seasonNumber = 1,  // 本地导入统一为第1季
+                overview = null,
+                runTimeTicks = 0,  // 初始时不知道时长，播放时更新
+                primaryImageTag = null,
+                played = false,
+                playbackPositionTicks = 0,
+                playCount = 0,
+                lastPlayedDate = 0,
+                isCached = true,  // 本地文件默认已缓存
+                localVideoPath = filePath,
+                fileSize = fileSize,
+                fileFormat = fileFormat
             )
         }
     }

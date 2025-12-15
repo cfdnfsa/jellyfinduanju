@@ -174,25 +174,45 @@ class ListViewModel(
     /**
      * 获取所有可用的筛选标签
      * 
-     * 标签顺序：全部、正在看、已缓存、自定义标签、文件夹、未看、已看
+     * 根据当前模式返回不同的标签：
+     * - 云端模式：全部、正在看、已缓存、自定义标签、云端文件夹、未看、已看
+     * - 本地模式：全部、正在看、自定义标签、本地文件夹、未看、已看
      */
     fun getAllFilterTags(): List<String> {
-        // 固定系统标签（不可编辑）
-        val fixedSystemTags = listOf("全部", "正在看", "已缓存")
+        val viewMode = _uiState.value.viewMode
+        
+        // 固定系统标签
+        val fixedSystemTags = listOf("全部", "正在看")
         val watchStatusTags = listOf("未看", "已看")
         
-        // 从剧集列表中提取云端文件夹标签（去重）
+        // 获取所有剧集
         val allSeries = seriesRepository.getLocalSeriesList()
-        val cloudFolderTags = allSeries
-            .mapNotNull { it.cloudFolderTag }
-            .distinct()
-            .sorted()
         
         // 获取自定义标签
         val customTags = AppSettings.customTags
         
-        // 按顺序组合：固定系统标签 + 自定义标签 + 文件夹 + 观看状态标签
-        return fixedSystemTags + customTags + cloudFolderTags + watchStatusTags
+        return when (viewMode) {
+            ViewMode.CLOUD -> {
+                // 云端模式：包含"已缓存"标签和云端文件夹标签
+                val cloudFolderTags = allSeries
+                    .filter { !it.isLocalImport }
+                    .mapNotNull { it.cloudFolderTag }
+                    .distinct()
+                    .sorted()
+                
+                fixedSystemTags + listOf("已缓存") + customTags + cloudFolderTags + watchStatusTags
+            }
+            ViewMode.LOCAL -> {
+                // 本地模式：包含本地文件夹标签（根文件夹名称）
+                val localFolderTags = allSeries
+                    .filter { it.isLocalImport }
+                    .mapNotNull { it.localFolderTag }
+                    .distinct()
+                    .sorted()
+                
+                fixedSystemTags + customTags + localFolderTags + watchStatusTags
+            }
+        }
     }
     
     /**
@@ -204,32 +224,41 @@ class ListViewModel(
     private fun applySearchFilter() {
         val query = _uiState.value.searchQuery.trim()
         val selectedTag = _uiState.value.selectedFilterTag
+        val viewMode = _uiState.value.viewMode
         
-        // 先应用标签筛选
+        // 第一步：根据模式过滤（云端 / 本地）
+        val modeFilteredList = when (viewMode) {
+            ViewMode.CLOUD -> allSeriesList.filter { !it.isLocalImport }
+            ViewMode.LOCAL -> allSeriesList.filter { it.isLocalImport }
+        }
+        
+        // 第二步：应用标签筛选
         val tagFilteredList = when (selectedTag) {
-            "全部" -> allSeriesList
-            "已缓存" -> allSeriesList.filter { it.isVideoCached }
-            "正在看" -> allSeriesList.filter { series ->
+            "全部" -> modeFilteredList
+            "已缓存" -> modeFilteredList.filter { it.isVideoCached }
+            "正在看" -> modeFilteredList.filter { series ->
                 // 有观看记录但未标记为已播放完成
                 series.lastWatchTime > 0 && !series.played
             }
-            "未看" -> allSeriesList.filter { series ->
+            "未看" -> modeFilteredList.filter { series ->
                 // 没有观看记录且未标记为已播放
                 series.lastWatchTime == 0L && !series.played
             }
-            "已看" -> allSeriesList.filter { series ->
+            "已看" -> modeFilteredList.filter { series ->
                 // 已标记为播放完成
                 series.played
             }
             else -> {
-                // 检查是否匹配云端文件夹标签或自定义标签
-                allSeriesList.filter { series ->
-                    series.cloudFolderTag == selectedTag || selectedTag in series.customTags
+                // 检查是否匹配云端文件夹标签、本地文件夹标签或自定义标签
+                modeFilteredList.filter { series ->
+                    series.cloudFolderTag == selectedTag || 
+                    series.localFolderTag == selectedTag || 
+                    selectedTag in series.customTags
                 }
             }
         }
         
-        // 再应用搜索筛选
+        // 第三步：应用搜索筛选
         val searchFilteredList = if (query.isEmpty()) {
             tagFilteredList
         } else {
@@ -239,7 +268,7 @@ class ListViewModel(
             }
         }
         
-        // 最后应用排序
+        // 第四步：应用排序
         val sortedList = applySorting(searchFilteredList)
         
         _uiState.update { 
@@ -280,18 +309,54 @@ class ListViewModel(
         return if (ascending) sorted else sorted.reversed()
     }
     
+    // ==================== 模式切换 ====================
+    
+    /**
+     * 切换视图模式（云端 ↔ 本地）
+     */
+    fun toggleViewMode() {
+        val newMode = if (_uiState.value.viewMode == ViewMode.CLOUD) {
+            ViewMode.LOCAL
+        } else {
+            ViewMode.CLOUD
+        }
+        
+        _uiState.update { 
+            it.copy(
+                viewMode = newMode,
+                selectedFilterTag = "全部" // 切换模式时重置筛选标签
+            )
+        }
+        
+        // 重新应用筛选
+        applySearchFilter()
+    }
+    
     // ==================== 刷新操作 ====================
     
     /**
      * 刷新剧集列表
      * 
-     * 从服务器获取最新的剧集列表
+     * 根据当前模式刷新：
+     * - 云端模式：从服务器获取最新的剧集列表
+     * - 本地模式：重新扫描所有本地文件夹
+     * 
      * 用户点击刷新按钮时调用
      */
     fun refreshSeriesList() {
         // 避免重复刷新
         if (_uiState.value.isLoading) return
         
+        when (_uiState.value.viewMode) {
+            ViewMode.CLOUD -> refreshCloudSeries()
+            ViewMode.LOCAL -> refreshLocalFolders()
+        }
+    }
+    
+    /**
+     * 刷新云端剧集列表
+     */
+    private fun refreshCloudSeries() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             
@@ -313,6 +378,75 @@ class ListViewModel(
                     }
                 }
             )
+        }
+    }
+    
+    /**
+     * 刷新本地文件夹
+     * 
+     * 重新扫描所有已添加的本地文件夹
+     */
+    fun refreshLocalFolders() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            
+            try {
+                // 获取所有本地文件夹引用
+                val localFolders = AppSettings.localFolderReferences
+                
+                if (localFolders.isEmpty()) {
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false,
+                            error = "还没有添加本地文件夹"
+                        ) 
+                    }
+                    return@launch
+                }
+                
+                var successCount = 0
+                var totalSeries = 0
+                
+                // 逐个扫描文件夹
+                localFolders.forEach { folderRef ->
+                    val result = seriesRepository.scanLocalFolder(
+                        folderUri = folderRef.uri,
+                        folderName = folderRef.displayName
+                    )
+                    
+                    result.fold(
+                        onSuccess = { seriesList ->
+                            successCount++
+                            totalSeries += seriesList.size
+                        },
+                        onFailure = { 
+                            // 跳过失败的文件夹，继续扫描下一个
+                        }
+                    )
+                }
+                
+                // 重新加载列表
+                allSeriesList = seriesRepository.getLocalSeriesList()
+                applySearchFilter()
+                
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        error = if (successCount > 0) {
+                            "已刷新 $successCount 个文件夹，共 $totalSeries 个剧集"
+                        } else {
+                            "刷新失败，请检查文件夹权限"
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        error = "刷新失败: ${e.message}"
+                    )
+                }
+            }
         }
     }
     
@@ -605,6 +739,14 @@ class ListViewModel(
 }
 
 /**
+ * 视图模式
+ */
+enum class ViewMode {
+    CLOUD,  // 云端剧集
+    LOCAL   // 本地导入
+}
+
+/**
  * 对话框类型
  */
 enum class DialogType {
@@ -641,7 +783,9 @@ data class ListUiState(
     /** 排序类型 */
     val sortType: SortType = SortType.UPDATE_TIME,
     /** 排序方向：true = 升序, false = 降序 */
-    val sortAscending: Boolean = false
+    val sortAscending: Boolean = false,
+    /** 视图模式：云端 / 本地 */
+    val viewMode: ViewMode = ViewMode.CLOUD
 )
 
 /**

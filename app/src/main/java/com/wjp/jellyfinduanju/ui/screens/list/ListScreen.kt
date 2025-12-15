@@ -140,6 +140,7 @@ fun ListScreen(
         uiState = uiState,
         allFilterTags = viewModel.getAllFilterTags(),
         onRefreshClick = { viewModel.refreshSeriesList() },
+        onToggleViewMode = { viewModel.toggleViewMode() },
         onSeriesClick = onSeriesClick,
         onSeriesLongClick = { series -> viewModel.showSeriesMenu(series) },
         onDismissMenu = { viewModel.hideSeriesMenu() },
@@ -175,6 +176,7 @@ private fun ListScreenContent(
     uiState: ListUiState,
     allFilterTags: List<String>,
     onRefreshClick: () -> Unit,
+    onToggleViewMode: () -> Unit,
     onSeriesClick: (SeriesLocalData) -> Unit,
     onSeriesLongClick: (SeriesLocalData) -> Unit,
     onDismissMenu: () -> Unit,
@@ -243,7 +245,11 @@ private fun ListScreenContent(
                             .padding(end = 8.dp),
                         placeholder = {
                             Text(
-                                "搜索剧集...",
+                                if (uiState.viewMode == ViewMode.CLOUD) {
+                                    "搜索云端剧集..."
+                                } else {
+                                    "搜索本地剧集..."
+                                },
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         },
@@ -374,6 +380,27 @@ private fun ListScreenContent(
                                 }
                             )
                         }
+                    }
+                    
+                    // 模式切换按钮（云端 ↔ 本地）
+                    IconButton(onClick = onToggleViewMode) {
+                        Icon(
+                            imageVector = if (uiState.viewMode == ViewMode.CLOUD) {
+                                Icons.Default.CloudQueue  // 云端模式
+                            } else {
+                                Icons.Default.Folder  // 本地模式
+                            },
+                            contentDescription = if (uiState.viewMode == ViewMode.CLOUD) {
+                                "切换到本地"
+                            } else {
+                                "切换到云端"
+                            },
+                            tint = if (uiState.viewMode == ViewMode.CLOUD) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.secondary
+                            }
+                        )
                     }
                     
                     // 刷新按钮

@@ -90,6 +90,9 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     
+    // 文件访问
+    implementation(libs.androidx.documentfile)
+    
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

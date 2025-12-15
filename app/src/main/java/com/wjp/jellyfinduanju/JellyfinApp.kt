@@ -75,7 +75,7 @@ class JellyfinApp : Application() {
      * 封装剧集获取、缓存等操作
      */
     val seriesRepository: SeriesRepository by lazy {
-        SeriesRepository(seriesDataStore, episodeDataStore, authRepository)
+        SeriesRepository(this, seriesDataStore, episodeDataStore, authRepository)
     }
     
     /**
@@ -83,7 +83,7 @@ class JellyfinApp : Application() {
      * 封装剧集详情（季、集）的获取和操作
      */
     val detailRepository: DetailRepository by lazy {
-        DetailRepository(authRepository, episodeDataStore)
+        DetailRepository(authRepository, seriesDataStore, episodeDataStore)
     }
     
     companion object {
