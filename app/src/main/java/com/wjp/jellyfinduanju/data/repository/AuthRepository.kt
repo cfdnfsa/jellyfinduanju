@@ -44,16 +44,6 @@ class AuthRepository(
     val serverConfig: Flow<ServerConfig?> = dataStore.serverConfig
     
     /**
-     * 获取备用服务器地址 Flow
-     */
-    val secondaryServerUrl: Flow<String?> = dataStore.secondaryServerUrl
-    
-    /**
-     * 获取当前激活的服务器索引 Flow
-     */
-    val activeServerIndex: Flow<Int> = dataStore.activeServerIndex
-    
-    /**
      * 获取当前激活的服务器地址
      */
     fun getActiveServerUrl(): String? = dataStore.getActiveServerUrl()

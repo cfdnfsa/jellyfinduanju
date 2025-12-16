@@ -18,7 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
-import dagger.hilt.android.EntryPointAccessors
+import com.wjp.jellyfinduanju.di.entrypoint.rememberAuthRepository
+import com.wjp.jellyfinduanju.di.entrypoint.rememberSeriesDataStore
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -33,7 +34,6 @@ import com.wjp.jellyfinduanju.ui.screens.download.DownloadScreen
 import com.wjp.jellyfinduanju.ui.screens.list.ListScreen
 import com.wjp.jellyfinduanju.data.local.SeriesDataStore
 import com.wjp.jellyfinduanju.data.repository.AuthRepository
-import com.wjp.jellyfinduanju.ui.screens.list.ListScreen
 import com.wjp.jellyfinduanju.ui.screens.login.LoginScreen
 import com.wjp.jellyfinduanju.ui.screens.detail.DetailScreen
 import com.wjp.jellyfinduanju.ui.screens.settings.SettingsScreen
@@ -47,22 +47,29 @@ import com.wjp.jellyfinduanju.ui.screens.player.PlayerScreen
 /**
  * Routes - 导航路由常量
  * 
- * 集中定义所有非底部导航的路由
+ * 集中管理所有非底部导航的路由路径
+ * 底部导航的路由在 BottomNavItem 中定义
  */
 private object Routes {
+    // 设置子页面路由
     const val CACHE_SETTINGS = "cache_settings"
     const val TAG_MANAGE = "tag_manage"
     const val LOCAL_FOLDER_MANAGE = "local_folder_manage"
+    
+    // 带参数的路由（模板格式，{} 内为参数占位符）
     const val SERIES_DETAIL = "series_detail/{seriesId}"
     const val PLAYER = "player/{seriesId}/{episodeId}"
     
     /**
-     * 构建剧集详情页路由
+     * 构建剧集详情页路由（填充参数）
+     * @param seriesId 剧集ID
      */
     fun seriesDetail(seriesId: String) = "series_detail/$seriesId"
     
     /**
-     * 构建播放页路由
+     * 构建播放页路由（填充参数）
+     * @param seriesId 剧集ID
+     * @param episodeId 集数ID
      */
     fun player(seriesId: String, episodeId: String) = "player/$seriesId/$episodeId"
 }
@@ -77,38 +84,24 @@ private object Routes {
  * 2. 未登录 -> 显示登录页
  * 3. 已登录 -> 显示主页（带底部导航）
  */
-/**
- * MainAppEntryPoint - Hilt EntryPoint
- * 用于在 Composable 中获取依赖
- */
-@dagger.hilt.EntryPoint
-@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
-interface MainAppEntryPoint {
-    fun authRepository(): AuthRepository
-}
-
 @Composable
 fun MainApp() {
-    // 通过 Hilt EntryPoint 获取 AuthRepository
-    val context = LocalContext.current
-    val authRepository = remember {
-        val hiltEntryPoint = EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            MainAppEntryPoint::class.java
-        )
-        hiltEntryPoint.authRepository()
-    }
+    // 通过扩展函数获取 AuthRepository（简洁优雅的方式）
+    // 类似于 hiltViewModel()，符合 Compose 规范
+    val authRepository = rememberAuthRepository()
     
-    // 收集用户会话状态
-    // 返回 null 表示未登录，返回 UserSession 表示已登录
+    // collectAsState：将 Flow 转换为 Compose State，自动触发重组
+    // initial = null：指定初始值，在 Flow 发出第一个值之前使用
+    // 
+    // 工作流程：
+    // 1. 首次渲染时 userSession = null（初始值）
+    // 2. Flow 异步从数据库读取用户会话
+    // 3. 读取完成后更新 userSession，触发重组
+    // 
+    // userSession 为 null = 未登录，有值 = 已登录
     val userSession by authRepository.userSession.collectAsState(initial = null)
     
-    // 使用一个简单的标志判断是否需要检查登录状态
-    // 由于 collectAsState 的初始值是 null，我们需要区分"正在加载"和"确实未登录"
-    @Suppress("UNUSED_VARIABLE")
-    val serverConfig by authRepository.serverConfig.collectAsState(initial = null)
-    
-    // 判断是否已登录
+    // 根据登录状态显示不同页面
     val isLoggedIn = userSession != null
     
     if (isLoggedIn) {
@@ -129,12 +122,14 @@ fun MainApp() {
 
 /**
  * LoginContent - 登录页面容器
+ * 
+ * 用户未登录时显示此页面
+ * 登录成功后会自动切换到 MainContent
  */
 @Composable
 private fun LoginContent(
     onLoginSuccess: () -> Unit
 ) {
-    // 使用 Hilt 自动注入 ViewModel
     val viewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.login.LoginViewModel>()
     
     LoginScreen(
@@ -148,43 +143,49 @@ private fun LoginContent(
 /**
  * MainContent - 主页面（带底部导航）
  * 
- * 只有登录后才会显示
+ * 职责：
+ * - 管理 Scaffold 布局（底部导航栏）
+ * - 根据当前路由决定是否显示底部栏
+ * - 控制页面内边距（播放器需要全屏）
  */
 @Composable
 private fun MainContent() {
-    // 创建导航控制器
+    // rememberNavController：创建导航控制器，在重组时保持实例
     val navController = rememberNavController()
     
-    // 获取当前导航状态，用于判断是否显示底部导航栏
+    // 监听当前导航状态，用于控制 UI 显示
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     
-    // 需要隐藏底部导航栏的路由列表
-    // 注意：对于带参数的路由，需要检查路由模板
+    // 判断是否显示底部导航栏
+    // 详情页、播放页、设置子页面需要隐藏底部栏，获得更大显示空间
     val shouldShowBottomBar = when {
         currentRoute == null -> true
         currentRoute == Routes.CACHE_SETTINGS -> false
+        currentRoute == Routes.TAG_MANAGE -> false
+        currentRoute == Routes.LOCAL_FOLDER_MANAGE -> false
         currentRoute.startsWith("series_detail/") -> false
-        currentRoute.startsWith("player/") -> false  // 播放页面也隐藏底部栏
+        currentRoute.startsWith("player/") -> false
         else -> true
     }
     
-    // 播放器页面需要延伸到状态栏，不能应用 innerPadding
-    val shouldApplyPadding = when {
-        currentRoute == null -> true
-        currentRoute.startsWith("player/") -> false  // 播放页面不应用padding
-        else -> true
-    }
+    // 判断是否应用内边距
+    // 播放器页面需要全屏显示，不应用 Scaffold 的 padding
+    val shouldApplyPadding = !currentRoute.orEmpty().startsWith("player/")
 
+    // Scaffold：Material Design 的标准页面布局容器
+    // 提供顶栏、底栏、浮动按钮等标准位置
     Scaffold(
         bottomBar = {
-            // 只在主页面显示底部导航栏
             if (shouldShowBottomBar) {
                 MainBottomNavigationBar(navController = navController)
             }
         },
-        contentWindowInsets = WindowInsets(0, 0, 0, 0)  // 禁用Scaffold的自动系统栏padding，实现边到边效果
+        // 禁用 Scaffold 的自动系统栏内边距，配合 MainActivity 的边到边模式
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
+        // innerPadding：Scaffold 自动计算的内边距（避开底栏）
+        // 播放器页面不使用此 padding，实现全屏效果
         MainNavHost(
             navController = navController,
             modifier = if (shouldApplyPadding) Modifier.padding(innerPadding) else Modifier
@@ -196,28 +197,30 @@ private fun MainContent() {
 
 /**
  * MainBottomNavigationBar - 底部导航栏
+ * 
+ * Material Design 3 的底部导航组件
+ * 用于在主要功能之间快速切换（列表、下载、设置）
  */
 @Composable
 private fun MainBottomNavigationBar(
     navController: NavHostController
 ) {
-    // 底部导航项列表
     val bottomNavItems = listOf(
-        BottomNavItem.List,
-        BottomNavItem.Download,
-        BottomNavItem.Settings
+        BottomNavItem.List,      // 剧集列表
+        BottomNavItem.Download,  // 下载管理
+        BottomNavItem.Settings   // 设置
     )
     
     NavigationBar(
-        // 简约风格：使用表面色而非容器色，更低调
         containerColor = MaterialTheme.colorScheme.surface,
-        // 添加细微边框，分隔内容
-        tonalElevation = 0.dp
+        tonalElevation = 0.dp  // 扁平化设计，无阴影
     ) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
 
         bottomNavItems.forEach { item ->
+            // hierarchy：检查当前目的地是否在导航层次结构中
+            // 支持嵌套导航图的选中状态
             val isSelected = currentDestination?.hierarchy?.any { 
                 it.route == item.route 
             } == true
@@ -233,22 +236,19 @@ private fun MainBottomNavigationBar(
                 selected = isSelected,
                 onClick = {
                     navController.navigate(item.route) {
-                        // 弹出到导航图的起始目的地，避免在底部导航之间创建大量堆栈
+                        // popUpTo：清除返回栈到起始位置，避免堆栈过深
                         popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
+                            saveState = true  // 保存页面状态
                         }
-                        // 避免在顶部创建同一目的地的多个副本
-                        launchSingleTop = true
-                        // 重新选择以前选择的项目时恢复其状态
-                        restoreState = true
+                        launchSingleTop = true  // 避免重复创建同一页面
+                        restoreState = true     // 恢复之前保存的状态
                     }
                 },
-                // 简约风格配色：黑白灰为主，选中时用翡翠绿点缀
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,  // 选中：翡翠绿
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,  // 指示器：浅绿背景
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,  // 未选中：灰色
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
@@ -261,52 +261,40 @@ private fun MainBottomNavigationBar(
 /**
  * MainNavHost - 主导航 Host
  * 
- * 管理所有页面的导航
+ * 职责：
+ * - 配置所有页面的路由
+ * - 管理页面跳转和参数传递
+ * - 处理 ViewModel 注入
  */
-/**
- * MainNavHostEntryPoint - Hilt EntryPoint
- */
-@dagger.hilt.EntryPoint
-@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
-interface MainNavHostEntryPoint {
-    fun seriesDataStore(): SeriesDataStore
-}
-
 @Composable
 private fun MainNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
-    // 通过 Hilt EntryPoint 获取依赖
-    val context = LocalContext.current
-    val seriesDataStore = remember {
-        val hiltEntryPoint = EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            MainNavHostEntryPoint::class.java
-        )
-        hiltEntryPoint.seriesDataStore()
-    }
+    // 获取剧集数据存储，用于在详情页和播放页获取数据
+    val seriesDataStore = rememberSeriesDataStore()
     
+    // NavHost：导航容器，管理页面的显示和切换
     NavHost(
         navController = navController,
-        startDestination = BottomNavItem.List.route,
+        startDestination = BottomNavItem.List.route,  // 启动时显示列表页
         modifier = modifier
     ) {
-        // ==================== 底部导航页面 ====================
+        // ==================== 底部导航页面（主要功能） ====================
         
-        // 列表页
+        // 列表页：显示所有剧集
         composable(BottomNavItem.List.route) {
+            // hiltViewModel：自动注入 ViewModel 及其依赖
             val listViewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.list.ListViewModel>()
             ListScreen(
                 viewModel = listViewModel,
                 onSeriesClick = { series ->
-                    // 导航到剧集详情页
                     navController.navigate(Routes.seriesDetail(series.id))
                 }
             )
         }
         
-        // 下载页
+        // 下载页：管理下载任务
         composable(BottomNavItem.Download.route) {
             val downloadViewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.download.DownloadViewModel>()
             DownloadScreen(
@@ -317,7 +305,7 @@ private fun MainNavHost(
             )
         }
         
-        // 设置页
+        // 设置页：应用配置入口
         composable(BottomNavItem.Settings.route) {
             val settingsViewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.settings.SettingsViewModel>()
             SettingsScreen(
@@ -334,43 +322,44 @@ private fun MainNavHost(
             )
         }
         
-        // ==================== 子页面 ====================
+        // ==================== 子页面（从设置页进入） ====================
         
-        // 缓存设置页面
+        // 缓存设置：管理视频缓存
         composable(Routes.CACHE_SETTINGS) {
             CacheSettingsScreen(
                 onBack = { navController.popBackStack() }
             )
         }
         
-        // 标签管理页面
+        // 标签管理：管理剧集分类标签
         composable(Routes.TAG_MANAGE) {
             TagManageScreen(
                 onBack = { navController.popBackStack() },
                 onDeleteTag = { tag ->
-                    // 注意：这个回调在 TagManageScreen 中有默认实现，这里可以省略
-                    // 如果需要在删除标签时做额外处理，可以在这里添加
+                    // 删除标签的回调（可选，Screen 内部有默认处理）
                 }
             )
         }
         
-        // 本地文件夹管理页面
+        // 本地文件夹管理：管理本地媒体文件路径
         composable(Routes.LOCAL_FOLDER_MANAGE) {
             LocalFolderManageScreen(
                 onBack = { navController.popBackStack() }
             )
         }
         
-        // 剧集详情页
+        // 剧集详情页：显示剧集信息和集数列表
+        // 路由参数：seriesId（剧集ID）
         composable(
-            route = Routes.SERIES_DETAIL,
+            route = Routes.SERIES_DETAIL,  // "series_detail/{seriesId}"
             arguments = listOf(
                 navArgument("seriesId") { type = NavType.StringType }
             )
         ) { backStackEntry ->
+            // 从导航参数中获取 seriesId
             val seriesId = backStackEntry.arguments?.getString("seriesId") ?: ""
             
-            // 从本地数据获取剧集信息
+            // 从本地数据存储获取剧集信息
             val series = seriesDataStore.getSeries(seriesId)
             
             if (series != null) {
@@ -379,29 +368,28 @@ private fun MainNavHost(
                     viewModel = detailViewModel,
                     onBack = { navController.popBackStack() },
                     onEpisodeClick = { episode ->
-                        // 导航到播放页面
                         navController.navigate(Routes.player(series.id, episode.id))
                     }
                 )
             } else {
-                // 剧集不存在，返回上一页
+                // 数据不存在时自动返回（避免显示空白页）
+                // LaunchedEffect：在 Composable 生命周期中执行副作用
                 LaunchedEffect(Unit) {
                     navController.popBackStack()
                 }
             }
         }
         
-        // 播放页面
+        // 播放页面：全屏视频播放器
+        // 路由参数：seriesId（剧集ID）、episodeId（集数ID）
         composable(
-            route = Routes.PLAYER,
+            route = Routes.PLAYER,  // "player/{seriesId}/{episodeId}"
             arguments = listOf(
                 navArgument("seriesId") { type = NavType.StringType },
                 navArgument("episodeId") { type = NavType.StringType }
             )
         ) { backStackEntry ->
             val seriesId = backStackEntry.arguments?.getString("seriesId") ?: ""
-            
-            // 从本地数据获取剧集信息
             val series = seriesDataStore.getSeries(seriesId)
             
             if (series != null) {
@@ -411,7 +399,6 @@ private fun MainNavHost(
                     onBack = { navController.popBackStack() }
                 )
             } else {
-                // 剧集不存在，返回上一页
                 LaunchedEffect(Unit) {
                     navController.popBackStack()
                 }

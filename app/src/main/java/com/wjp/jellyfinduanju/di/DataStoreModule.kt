@@ -15,11 +15,30 @@ import javax.inject.Singleton
 /**
  * DataStoreModule - Hilt 模块：提供数据存储相关的依赖
  * 
- * @InstallIn(SingletonComponent::class) 
- * - 表示这些依赖的生命周期与应用相同（单例）
+ * 职责：创建和提供底层数据存储对象（内存缓存、本地存储等）
  * 
- * @Provides 标记提供依赖的方法
- * @Singleton 确保整个应用只有一个实例
+ * ========== 注解说明 ==========
+ * 
+ * @Module
+ * - 作用：标记这是 Hilt 的依赖提供模块
+ * - 类比 Spring：相当于 @Configuration
+ * - Hilt 会扫描这个类，找到所有 @Provides 方法
+ * 
+ * @InstallIn(SingletonComponent::class)
+ * - 作用：指定依赖的作用域/生命周期
+ * - SingletonComponent：应用级单例，整个 App 生命周期内只有一个实例
+ * - 类比 Spring：相当于 @ApplicationScope
+ * - 其他选项：ActivityComponent（Activity 级）、ViewModelComponent（ViewModel 级）
+ * 
+ * @Provides
+ * - 作用：标记"这个方法可以提供依赖对象"
+ * - 类比 Spring：相当于 @Bean
+ * - Hilt 会调用这些方法来创建依赖实例
+ * 
+ * @Singleton
+ * - 作用：确保全局只创建一次，后续都复用同一个实例
+ * - 类比 Spring：相当于 @Singleton
+ * - 配合 @InstallIn(SingletonComponent::class) 使用
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -28,6 +47,11 @@ object DataStoreModule {
     /**
      * 提供 AppDataStore
      * 用于存储应用配置、登录信息等
+     * 
+     * @ApplicationContext 注解：
+     * - 告诉 Hilt 注入的是 Application 级别的 Context
+     * - 而不是 Activity 的 Context，避免内存泄漏
+     * - Application Context 的生命周期和 App 一致
      */
     @Provides
     @Singleton
