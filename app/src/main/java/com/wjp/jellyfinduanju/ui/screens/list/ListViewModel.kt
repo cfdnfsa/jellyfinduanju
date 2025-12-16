@@ -211,14 +211,23 @@ class ListViewModel(
                 fixedSystemTags + listOf("已缓存") + customTags + cloudFolderTags + watchStatusTags
             }
             ViewMode.LOCAL -> {
-                // 本地模式：包含本地文件夹标签（根文件夹名称）
-                val localFolderTags = allSeries
-                    .filter { it.isLocalImport }
+                // 本地模式：收集所有本地剧集的标签
+                val localSeries = allSeries.filter { it.isLocalImport }
+                
+                // 1. 根文件夹标签
+                val localFolderTags = localSeries
                     .mapNotNull { it.localFolderTag }
                     .distinct()
-                    .sorted()
                 
-                fixedSystemTags + customTags + localFolderTags + watchStatusTags
+                // 2. 自动生成的标签（父文件夹名称）
+                val autoTags = localSeries
+                    .flatMap { it.customTags }
+                    .distinct()
+                
+                // 合并所有标签并排序
+                val allLocalTags = (localFolderTags + autoTags).distinct().sorted()
+                
+                fixedSystemTags + customTags + allLocalTags + watchStatusTags
             }
         }
     }
