@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -52,6 +55,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -91,6 +96,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -667,10 +673,9 @@ private fun ListScreenContent(
 }
 
 /**
- * TagFilterBar - 标签筛选栏（可滑动的 Tab 样式）
+ * TagFilterBar - 标签筛选栏（紧凑胶囊式）
  *
- * 使用 ScrollableTabRow 实现，带有选中指示器
- * 实时跟随 HorizontalPager 的滑动进度
+ * 使用 FilterChip 实现，更紧凑、更现代
  */
 @Composable
 private fun TagFilterBar(
@@ -680,22 +685,25 @@ private fun TagFilterBar(
     onTagSelected: (String) -> Unit
 ) {
     val customTags = AppSettings.customTags
+    val lazyListState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    
+    // 自动滚动到选中项
+    LaunchedEffect(currentPage) {
+        if (currentPage in allTags.indices) {
+            lazyListState.animateScrollToItem(currentPage)
+        }
+    }
 
-    ScrollableTabRow(
-        selectedTabIndex = currentPage,
-        modifier = Modifier.fillMaxWidth(),
-        edgePadding = 8.dp,
-        indicator = { tabPositions ->
-            if (currentPage < tabPositions.size) {
-                TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[currentPage]),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        },
-        divider = {}  // 移除默认的分割线
+    LazyRow(
+        state = lazyListState,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        allTags.forEachIndexed { index, tag ->
+        itemsIndexed(allTags) { index, tag ->
             val isSelected = index == currentPage
             
             // 根据标签类型获取图标
@@ -706,32 +714,46 @@ private fun TagFilterBar(
                 tag == "未看" -> Icons.Default.VisibilityOff
                 tag == "已看" -> Icons.Default.CheckCircle
                 tag in customTags -> Icons.AutoMirrored.Filled.Label
-                else -> Icons.Default.Folder  // 云端文件夹标签
+                else -> Icons.Default.Folder  // 文件夹标签
             }
             
-            Tab(
+            FilterChip(
                 selected = isSelected,
                 onClick = { onTagSelected(tag) },
-                text = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        icon?.let {
-                            Icon(
-                                imageVector = it,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        Text(
-                            text = tag,
-                            style = MaterialTheme.typography.labelLarge
+                label = {
+                    Text(
+                        text = tag,
+                        style = MaterialTheme.typography.labelSmall,  // 更小的字体
+                        fontSize = 12.sp  // 明确设置字号
+                    )
+                },
+                leadingIcon = if (icon != null) {
+                    {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)  // 更小的图标
                         )
                     }
-                },
-                selectedContentColor = MaterialTheme.colorScheme.primary,
-                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                } else null,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = isSelected,
+                    borderColor = if (isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    },
+                    selectedBorderColor = MaterialTheme.colorScheme.primary,
+                    borderWidth = 1.dp,
+                    selectedBorderWidth = 1.dp
+                ),
+                modifier = Modifier.height(28.dp)  // 紧凑高度
             )
         }
     }
