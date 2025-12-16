@@ -215,6 +215,17 @@ object AppSettings {
         }
     
     /**
+     * 列表查看模式（云端/本地）
+     * 
+     * 默认：CLOUD（云端模式）
+     */
+    var viewMode: String
+        get() = mmkv.decodeString(Keys.VIEW_MODE) ?: "CLOUD"
+        set(value) {
+            mmkv.encode(Keys.VIEW_MODE, value)
+        }
+    
+    /**
      * 添加自定义标签
      */
     fun addCustomTag(tag: String) {
@@ -335,6 +346,7 @@ object AppSettings {
         const val LIST_SORT_TYPE = "list_sort_type"
         const val LIST_SORT_ASCENDING = "list_sort_ascending"
         const val LOCAL_FOLDER_REFERENCES = "local_folder_references"
+        const val VIEW_MODE = "view_mode"
     }
     
     /**

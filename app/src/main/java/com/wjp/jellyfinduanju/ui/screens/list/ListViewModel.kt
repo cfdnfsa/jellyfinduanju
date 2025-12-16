@@ -50,10 +50,18 @@ class ListViewModel(
         }
         val savedSortAscending = AppSettings.listSortAscending
         
+        // 从 AppSettings 加载查看模式
+        val savedViewMode = try {
+            ViewMode.valueOf(AppSettings.viewMode)
+        } catch (e: Exception) {
+            ViewMode.CLOUD
+        }
+        
         _uiState.update { 
             it.copy(
                 sortType = savedSortType,
-                sortAscending = savedSortAscending
+                sortAscending = savedSortAscending,
+                viewMode = savedViewMode
             )
         }
         
@@ -320,6 +328,9 @@ class ListViewModel(
         } else {
             ViewMode.CLOUD
         }
+        
+        // 保存到 AppSettings
+        AppSettings.viewMode = newMode.name
         
         _uiState.update { 
             it.copy(

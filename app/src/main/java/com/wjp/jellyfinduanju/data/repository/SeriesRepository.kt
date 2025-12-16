@@ -470,6 +470,13 @@ class SeriesRepository(
      * @return 图片路径（本地路径以 file:// 开头，远程为 http(s)://）
      */
     suspend fun getSeriesImageUrl(seriesId: String): String? = withContext(Dispatchers.IO) {
+        val series = seriesDataStore.getSeries(seriesId) ?: return@withContext null
+        
+        // 优先处理本地导入的剧集
+        if (series.isLocalImport && !series.localImagePath.isNullOrEmpty()) {
+            return@withContext series.localImagePath  // 直接返回 SAF URI
+        }
+        
         // 先检查本地是否有缓存
         val localFile = ImageCacheUtils.getLocalImageFile(seriesId)
         if (localFile != null) {
@@ -478,7 +485,6 @@ class SeriesRepository(
         
         // 返回远程 URL
         val serverConfig = authRepository.serverConfig.first() ?: return@withContext null
-        val series = seriesDataStore.getSeries(seriesId) ?: return@withContext null
         
         // 使用当前激活的服务器地址（支持主备切换）
         val activeServerUrl = authRepository.getActiveServerUrl() ?: serverConfig.serverUrl
@@ -713,8 +719,6 @@ class SeriesRepository(
                 // 保存 SeriesLocalData
                 seriesDataStore.saveSeries(seriesToSave)
                 seriesList.add(seriesToSave)
-                
-                android.util.Log.d("SeriesRepository", "保存完成: ${seriesToSave.name}, 剧集数=${finalEpisodes.size}, played=$allEpisodesPlayed, lastWatchTime=$lastPlayedTime")
             }
             
             Result.success(seriesList)
