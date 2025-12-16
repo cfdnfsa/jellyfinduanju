@@ -252,9 +252,9 @@ private fun ListScreenContent(
                         placeholder = {
                             Text(
                                 if (uiState.viewMode == ViewMode.CLOUD) {
-                                    "搜索云端剧集..."
+                                    "搜索"
                                 } else {
-                                    "搜索本地剧集..."
+                                    "搜索"
                                 },
                                 style = MaterialTheme.typography.bodyMedium
                             )
