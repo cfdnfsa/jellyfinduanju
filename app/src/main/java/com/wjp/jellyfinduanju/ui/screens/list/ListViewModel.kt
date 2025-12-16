@@ -574,24 +574,46 @@ class ListViewModel(
         
         viewModelScope.launch {
             try {
-                // 1. 上报服务器
-                val result = detailRepository.markSeriesAsWatched(series.id, watched)
-                
-                result.fold(
-                    onSuccess = {
-                        // 2. 本地更新状态（不请求服务器）
-                        seriesRepository.updateSeriesPlayedStatus(series.id, watched)
-                        
-                        _uiState.update { 
-                            it.copy(error = if (watched) "已标记为看完" else "已标记为未看")
-                        }
-                    },
-                    onFailure = { e ->
-                        _uiState.update { 
-                            it.copy(error = "操作失败: ${e.message}")
+                if (series.isLocalImport) {
+                    // 本地剧集：只更新本地状态
+                    seriesRepository.updateSeriesPlayedStatus(series.id, watched)
+                    
+                    // 更新内存中的列表
+                    allSeriesList = allSeriesList.map { 
+                        if (it.id == series.id) {
+                            it.copy(
+                                played = watched,
+                                lastWatchTime = if (watched) System.currentTimeMillis() else it.lastWatchTime
+                            )
+                        } else {
+                            it
                         }
                     }
-                )
+                    applySearchFilter()
+                    
+                    _uiState.update { 
+                        it.copy(error = if (watched) "已标记为看完" else "已标记为未看")
+                    }
+                } else {
+                    // 云端剧集：上报服务器
+                    val result = detailRepository.markSeriesAsWatched(series.id, watched)
+                    
+                    result.fold(
+                        onSuccess = {
+                            // 本地更新状态
+                            seriesRepository.updateSeriesPlayedStatus(series.id, watched)
+                            
+                            _uiState.update { 
+                                it.copy(error = if (watched) "已标记为看完" else "已标记为未看")
+                            }
+                        },
+                        onFailure = { e ->
+                            _uiState.update { 
+                                it.copy(error = "操作失败: ${e.message}")
+                            }
+                        }
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.update { 
                     it.copy(error = "操作失败: ${e.message}")
@@ -606,6 +628,14 @@ class ListViewModel(
     fun confirmCacheAll() {
         val series = _uiState.value.selectedSeries ?: return
         hideDialog()
+        
+        // 本地剧集不需要缓存
+        if (series.isLocalImport) {
+            _uiState.update { 
+                it.copy(error = "本地剧集无需缓存")
+            }
+            return
+        }
         
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
@@ -675,6 +705,14 @@ class ListViewModel(
     fun confirmDeleteAllCache() {
         val series = _uiState.value.selectedSeries ?: return
         hideDialog()
+        
+        // 本地剧集没有缓存
+        if (series.isLocalImport) {
+            _uiState.update { 
+                it.copy(error = "本地剧集没有缓存")
+            }
+            return
+        }
         
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }

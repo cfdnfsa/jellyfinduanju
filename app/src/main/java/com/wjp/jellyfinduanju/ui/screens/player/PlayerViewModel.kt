@@ -402,34 +402,40 @@ class PlayerViewModel(
                 
                 // 毫秒转 ticks：1毫秒 = 10,000 ticks
                 val positionTicks = state.currentPosition * 10_000
-                
-                // 1. 先保存到本地 EpisodeDataStore（保证本地进度一定被保存）
-                try {
-                    detailRepository.savePlaybackPositionLocal(
-                        seasonId = episode.seasonId,
-                        episodeId = episode.id,
-                        positionTicks = positionTicks
-                    )
-                } catch (e: Exception) { 
-                    // 本地保存失败（静默处理）
-                }
+                val durationTicks = if (state.duration > 0) state.duration * 10_000 else 0
                 
                 // 2. 如果是本地导入的剧集，写入进度文件；否则上报到服务器
                 if (series.isLocalImport) {
-                    // 本地导入：写入进度文件
+                    // 本地导入：保存到本地数据库并写入进度文件
                     try {
                         series.localFolderPath?.let { folderPath ->
-                            // 从 EpisodeDataStore 重新读取最新数据（包含刚刚保存的进度）
+                            // 获取当前季的所有剧集
                             val result = detailRepository.getEpisodes(series.id, episode.seasonId)
-                            result.onSuccess { latestEpisodes ->
-                                // 找到当前剧集的最新数据
-                                val updatedEpisode = latestEpisodes.find { it.id == episode.id }
+                            result.onSuccess { episodes ->
+                                // 找到当前剧集并更新进度和总时长
+                                val updatedEpisodes = episodes.map { ep ->
+                                    if (ep.id == episode.id) {
+                                        ep.copy(
+                                            playbackPositionTicks = positionTicks,
+                                            runTimeTicks = if (durationTicks > 0) durationTicks else ep.runTimeTicks,  // 更新总时长
+                                            lastPlayedDate = System.currentTimeMillis()
+                                        )
+                                    } else {
+                                        ep
+                                    }
+                                }
+                                
+                                // 找到更新后的当前剧集
+                                val updatedEpisode = updatedEpisodes.find { it.id == episode.id }
                                 if (updatedEpisode != null) {
+                                    // 保存到本地数据库
+                                    detailRepository.updateEpisodeLocalOnly(updatedEpisode)
+                                    
                                     // 写入进度文件
                                     seriesRepository.updateLocalSeriesProgress(
                                         series.id,
                                         updatedEpisode,
-                                        latestEpisodes
+                                        updatedEpisodes
                                     )
                                 }
                             }
@@ -438,6 +444,16 @@ class PlayerViewModel(
                         // 进度文件写入失败（静默处理）
                     }
                 } else {
+                    // 云端剧集：先保存到本地 EpisodeDataStore
+                    try {
+                        detailRepository.savePlaybackPositionLocal(
+                            seasonId = episode.seasonId,
+                            episodeId = episode.id,
+                            positionTicks = positionTicks
+                        )
+                    } catch (e: Exception) { 
+                        // 本地保存失败（静默处理）
+                    }
                     // 云端剧集：上报到服务器
                     try {
                         detailRepository.updatePlaybackPosition(

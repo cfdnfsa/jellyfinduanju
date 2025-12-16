@@ -296,6 +296,7 @@ data class SeriesLocalData(
                 episodeCount = episodeCount,
                 lastSyncTime = System.currentTimeMillis(),
                 isVideoCached = true,  // 本地导入默认已缓存
+                isDeletedFromServer = false,  // 本地剧集不涉及服务器
                 customTags = autoTags,  // 自动添加父文件夹名称作为标签
                 
                 // 本地导入专用字段

@@ -623,9 +623,8 @@ class SeriesRepository(
             // 保存剧集数据到本地存储
             val seriesList = mutableListOf<SeriesLocalData>()
             parsedSeriesList.forEach { parsedSeries ->
-                // 保存 SeriesLocalData
-                seriesDataStore.saveSeries(parsedSeries.series)
-                seriesList.add(parsedSeries.series)
+                // 检查是否已存在该剧集（用于保留状态）
+                val existingSeries = seriesDataStore.getSeries(parsedSeries.series.id)
                 
                 // 为本地导入的剧集创建一个默认的 Season（本地剧集不区分季）
                 val defaultSeason = SeasonLocalData(
@@ -639,35 +638,83 @@ class SeriesRepository(
                 // 保存 Season
                 episodeDataStore.saveSeasons(parsedSeries.series.id, listOf(defaultSeason))
                 
-                // 读取现有的进度文件（如果有）
+                // 读取现有的进度（优先从进度文件，其次从数据库）
                 val existingProgress = LocalProgressManager.readProgress(
                     context = context,
                     seriesFolderUri = parsedSeries.series.localFolderPath ?: ""
                 )
                 
-                // 如果有现有进度，更新 episodes 的播放进度
-                val finalEpisodes = if (existingProgress != null) {
-                    parsedSeries.episodes.map { episode ->
-                        val progress = existingProgress.episodes.find { 
-                            it.episodeNumber == episode.episodeNumber 
-                        }
-                        if (progress != null) {
-                            episode.copy(
-                                playbackPositionTicks = progress.playbackPositionTicks,
-                                runTimeTicks = progress.runTimeTicks,
-                                played = progress.played,
-                                lastPlayedDate = progress.lastPlayedDate
-                            )
-                        } else {
-                            episode
-                        }
+                // 读取数据库中已有的剧集数据（作为备份）
+                val existingEpisodesFromDb = episodeDataStore.getEpisodes(defaultSeason.id)
+                
+                // 合并进度信息：优先使用进度文件，其次使用数据库中的数据
+                val finalEpisodes = parsedSeries.episodes.map { episode ->
+                    // 1. 尝试从进度文件读取
+                    val progressFromFile = existingProgress?.episodes?.find { 
+                        it.episodeNumber == episode.episodeNumber 
                     }
-                } else {
-                    parsedSeries.episodes
+                    
+                    // 2. 尝试从数据库读取（通过文件路径匹配）
+                    val existingEpisodeFromDb = existingEpisodesFromDb?.find { 
+                        it.localVideoPath == episode.localVideoPath 
+                    }
+                    
+                    // 优先使用进度文件，其次使用数据库数据
+                    if (progressFromFile != null) {
+                        episode.copy(
+                            playbackPositionTicks = progressFromFile.playbackPositionTicks,
+                            runTimeTicks = progressFromFile.runTimeTicks,
+                            played = progressFromFile.played,
+                            lastPlayedDate = progressFromFile.lastPlayedDate
+                        )
+                    } else if (existingEpisodeFromDb != null) {
+                        episode.copy(
+                            playbackPositionTicks = existingEpisodeFromDb.playbackPositionTicks,
+                            runTimeTicks = existingEpisodeFromDb.runTimeTicks,
+                            played = existingEpisodeFromDb.played,
+                            lastPlayedDate = existingEpisodeFromDb.lastPlayedDate,
+                            isCached = existingEpisodeFromDb.isCached
+                        )
+                    } else {
+                        episode
+                    }
                 }
                 
                 // 保存剧集列表（使用 defaultSeason.id 作为 seasonId）
                 episodeDataStore.saveEpisodes(defaultSeason.id, finalEpisodes)
+                
+                // 根据剧集播放状态计算 Series 的播放状态
+                val allEpisodesPlayed = finalEpisodes.isNotEmpty() && finalEpisodes.all { it.played }
+                val hasAnyProgress = finalEpisodes.any { it.playbackPositionTicks > 0 }
+                val lastPlayedTime = finalEpisodes.maxOfOrNull { it.lastPlayedDate } ?: 0L
+                
+                // 如果已存在，保留用户自定义的状态和标签
+                val seriesToSave = if (existingSeries != null) {
+                    parsedSeries.series.copy(
+                        // 保留用户手动设置的播放状态
+                        played = existingSeries.played,
+                        // 更新 lastWatchTime（取最新的）
+                        lastWatchTime = maxOf(lastPlayedTime, existingSeries.lastWatchTime),
+                        // 保留用户自定义标签（合并自动标签）
+                        customTags = (existingSeries.customTags + parsedSeries.series.customTags).distinct(),
+                        // 本地剧集不涉及服务器，确保为 false
+                        isDeletedFromServer = false
+                    )
+                } else {
+                    // 新剧集，使用基于 Episode 计算出的状态
+                    parsedSeries.series.copy(
+                        played = allEpisodesPlayed,
+                        lastWatchTime = lastPlayedTime,
+                        // 本地剧集不涉及服务器
+                        isDeletedFromServer = false
+                    )
+                }
+                
+                // 保存 SeriesLocalData
+                seriesDataStore.saveSeries(seriesToSave)
+                seriesList.add(seriesToSave)
+                
+                android.util.Log.d("SeriesRepository", "保存完成: ${seriesToSave.name}, 剧集数=${finalEpisodes.size}, played=$allEpisodesPlayed, lastWatchTime=$lastPlayedTime")
             }
             
             Result.success(seriesList)
