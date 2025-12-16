@@ -56,7 +56,6 @@ import com.wjp.jellyfinduanju.data.settings.AppSettings
 @Composable
 fun TagManageScreen(
     onBack: () -> Unit,
-    onDeleteTag: (String) -> Unit = {}  // 删除标签时的回调，用于同步移除剧集中的标签
 ) {
     // 标签列表状态
     var tags by remember { mutableStateOf(AppSettings.customTags) }
@@ -195,8 +194,6 @@ fun TagManageScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        // 先从所有剧集中移除该标签
-                        onDeleteTag(tag)
                         // 再从标签列表中移除
                         AppSettings.removeCustomTag(tag)
                         tags = AppSettings.customTags

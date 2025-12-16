@@ -80,8 +80,7 @@ import com.wjp.jellyfinduanju.ui.theme.JellyfinDuanjuTheme
  */
 @Composable
 fun LoginScreen(
-    viewModel: LoginViewModel,       // ViewModel：管理页面状态和业务逻辑
-    onLoginSuccess: () -> Unit       // 回调函数：登录成功后通知外部（用于页面跳转）
+    viewModel: LoginViewModel       // ViewModel：管理页面状态和业务逻辑
 ) {
     // ==================== 状态订阅 ====================
     // 
@@ -104,21 +103,6 @@ fun LoginScreen(
     // 焦点管理器：用于控制输入框焦点、隐藏键盘等
     // LocalFocusManager.current 是 Compose 提供的"环境变量"
     val focusManager = LocalFocusManager.current
-    
-    // ==================== 副作用：监听状态变化执行操作 ====================
-    // 
-    // LaunchedEffect(key) { } 的工作方式：
-    // - 当 key 的值发生变化时，执行 { } 中的代码
-    // - 内部是协程环境，可以调用 suspend 函数
-    // - 当 key 没变化时，重组不会重新执行里面的代码
-    //
-    // 监听登录成功状态
-    // key = uiState.isLoginSuccess，当它从 false 变为 true 时触发
-    LaunchedEffect(uiState.isLoginSuccess) {
-        if (uiState.isLoginSuccess) {
-            onLoginSuccess()  // 调用回调，通知外部登录成功（跳转到主页）
-        }
-    }
     
     // 监听错误信息
     // key = uiState.error，当它从 null 变为有值时触发
