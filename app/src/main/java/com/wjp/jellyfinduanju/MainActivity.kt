@@ -12,13 +12,20 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.wjp.jellyfinduanju.ui.theme.JellyfinDuanjuTheme
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * MainActivity - 应用的主入口 Activity
  * 
  * 继承自 ComponentActivity，这是 Jetpack Compose 推荐使用的 Activity 基类
  * ComponentActivity 提供了与 Compose 集成所需的功能
+ * 
+ * @AndroidEntryPoint 注解：
+ * - 让 Hilt 为这个 Activity 生成依赖注入代码
+ * - Activity 中可以使用 @Inject 注入依赖
+ * - Activity 中创建的 ViewModel 可以自动注入依赖
  */
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -1,8 +1,9 @@
 package com.wjp.jellyfinduanju.ui.screens.player
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.wjp.jellyfinduanju.data.local.SeriesDataStore
 import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
 import com.wjp.jellyfinduanju.data.model.SeasonLocalData
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
@@ -10,6 +11,7 @@ import com.wjp.jellyfinduanju.data.repository.DetailRepository
 import com.wjp.jellyfinduanju.data.repository.SeriesRepository
 import com.wjp.jellyfinduanju.data.settings.AppSettings
 import com.wjp.jellyfinduanju.download.DownloadManager
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -21,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
 /**
  * ============================================================================
@@ -47,15 +50,24 @@ import kotlinx.coroutines.withContext
  * 
  * @param detailRepository 详情仓库，用于获取剧集数据和上报进度
  * @param seriesRepository 剧集仓库，用于本地导入剧集的进度文件管理
- * @param series 当前剧集的基本信息
- * @param initialEpisodeId 初始播放的集 ID（从详情页传入）
+ * @param seriesDataStore 剧集数据存储（用于获取剧集信息）
+ * @param savedStateHandle SavedStateHandle（用于获取导航参数）
  */
-class PlayerViewModel(
+@HiltViewModel
+class PlayerViewModel @Inject constructor(
     private val detailRepository: DetailRepository,
     private val seriesRepository: SeriesRepository,
-    private val series: SeriesLocalData,
-    private val initialEpisodeId: String
+    private val seriesDataStore: SeriesDataStore,
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+    
+    // 从导航参数获取 seriesId 和 episodeId
+    private val seriesId: String = savedStateHandle.get<String>("seriesId") ?: ""
+    private val initialEpisodeId: String = savedStateHandle.get<String>("episodeId") ?: ""
+    
+    // 从 SeriesDataStore 获取剧集信息
+    private val series: SeriesLocalData = seriesDataStore.getSeries(seriesId) 
+        ?: throw IllegalArgumentException("Series not found: $seriesId")
     
     // ============================================================================
     // UI 状态
@@ -961,32 +973,3 @@ data class PlayerUiState(
     }
 }
 
-/**
- * ============================================================================
- * PlayerViewModelFactory - ViewModel 工厂类
- * ============================================================================
- * 
- * 由于 PlayerViewModel 需要构造参数，不能直接使用默认的 ViewModelProvider
- * 需要自定义工厂类来创建 ViewModel 实例
- * 
- * 使用方式：
- * ```
- * val viewModel: PlayerViewModel = viewModel(
- *     factory = PlayerViewModelFactory(repository, series, episodeId)
- * )
- * ```
- */
-class PlayerViewModelFactory(
-    private val detailRepository: DetailRepository,
-    private val seriesRepository: SeriesRepository,
-    private val series: SeriesLocalData,
-    private val initialEpisodeId: String
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(PlayerViewModel::class.java)) {
-            return PlayerViewModel(detailRepository, seriesRepository, series, initialEpisodeId) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
-}

@@ -50,7 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.wjp.jellyfinduanju.data.settings.LocalFolderReference
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -69,9 +69,7 @@ import java.util.Locale
 @Composable
 fun LocalFolderManageScreen(
     onBack: () -> Unit,
-    viewModel: LocalFolderManageViewModel = viewModel(
-        factory = LocalFolderManageViewModelFactory(LocalContext.current.applicationContext as android.app.Application)
-    )
+    viewModel: LocalFolderManageViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()

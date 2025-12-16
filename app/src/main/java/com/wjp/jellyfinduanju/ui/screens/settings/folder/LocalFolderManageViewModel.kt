@@ -5,22 +5,23 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.wjp.jellyfinduanju.JellyfinApp
 import com.wjp.jellyfinduanju.data.repository.SeriesRepository
 import com.wjp.jellyfinduanju.data.settings.AppSettings
 import com.wjp.jellyfinduanju.data.settings.LocalFolderReference
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * LocalFolderManageViewModel - 本地文件夹管理页面的 ViewModel
  */
-class LocalFolderManageViewModel(
+@HiltViewModel
+class LocalFolderManageViewModel @Inject constructor(
     private val application: Application,
     private val seriesRepository: SeriesRepository
 ) : ViewModel() {
@@ -225,17 +226,3 @@ data class LocalFolderManageUiState(
     val scanProgress: Float = 0f,          // 扫描进度 (0f - 1f)
     val error: String? = null
 )
-
-class LocalFolderManageViewModelFactory(
-    private val application: Application
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(LocalFolderManageViewModel::class.java)) {
-            val seriesRepository = JellyfinApp.instance.seriesRepository
-            return LocalFolderManageViewModel(application, seriesRepository) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
-}
-

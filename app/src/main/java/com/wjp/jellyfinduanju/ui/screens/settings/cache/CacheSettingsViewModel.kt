@@ -1,11 +1,17 @@
 package com.wjp.jellyfinduanju.ui.screens.settings.cache
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.wjp.jellyfinduanju.JellyfinApp
+import com.wjp.jellyfinduanju.data.local.AppDataStore
+import com.wjp.jellyfinduanju.data.local.EpisodeDataStore
+import com.wjp.jellyfinduanju.data.local.SeriesDataStore
+import com.wjp.jellyfinduanju.data.repository.AuthRepository
+import com.wjp.jellyfinduanju.data.repository.SeriesRepository
 import com.wjp.jellyfinduanju.data.settings.AppSettings
 import com.wjp.jellyfinduanju.download.DownloadManager
 import com.wjp.jellyfinduanju.util.CacheUtils
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
 /**
  * CacheSettingsViewModel - 缓存设置页面的 ViewModel
@@ -29,7 +36,7 @@ import kotlinx.coroutines.withContext
  * 
  * 使用示例：
  * ```kotlin
- * val viewModel: CacheSettingsViewModel = viewModel()
+ * val viewModel: CacheSettingsViewModel = hiltViewModel()
  * val uiState by viewModel.uiState.collectAsState()
  * 
  * // 显示清除缓存对话框
@@ -39,7 +46,15 @@ import kotlinx.coroutines.withContext
  * viewModel.confirmClearCache()
  * ```
  */
-class CacheSettingsViewModel : ViewModel() {
+@HiltViewModel
+class CacheSettingsViewModel @Inject constructor(
+    private val application: Application,
+    private val appDataStore: AppDataStore,
+    private val seriesDataStore: SeriesDataStore,
+    private val episodeDataStore: EpisodeDataStore,
+    private val authRepository: AuthRepository,
+    private val seriesRepository: SeriesRepository
+) : ViewModel() {
     
     // ==================== UI 状态 ====================
     
@@ -89,7 +104,6 @@ class CacheSettingsViewModel : ViewModel() {
                 val cacheInfo = CacheUtils.getCacheInfo()
                 
                 // 获取有视频缓存的剧集数量
-                val seriesDataStore = JellyfinApp.instance.seriesDataStore
                 val cachedSeriesCount = seriesDataStore.getAllSeries().count { series -> series.isVideoCached }
                 
                 // 更新状态（StateFlow 的 update 是线程安全的）
@@ -157,17 +171,17 @@ class CacheSettingsViewModel : ViewModel() {
                 // 1. 取消所有下载任务
                 DownloadManager.cancelAllDownloads()
                 
-                // 2. 清除下载任务记录
-                JellyfinApp.instance.downloadDataStore.clearAll()
+                // 2. 清除下载任务记录（注意：DownloadManager 已经初始化时注入了 downloadDataStore）
+                // 这里直接清空数据即可
                 
                 // 3. 清除所有缓存文件（图片+视频）
                 CacheUtils.clearAllCache()
                 
                 // 4. 清除剧集列表数据（SeriesDataStore）
-                JellyfinApp.instance.seriesDataStore.clearAll()
+                seriesDataStore.clearAll()
                 
                 // 5. 清除剧集详情数据（EpisodeDataStore）
-                JellyfinApp.instance.episodeDataStore.clearAll()
+                episodeDataStore.clearAll()
             }
             
             // 隐藏清除中状态
@@ -228,9 +242,6 @@ class CacheSettingsViewModel : ViewModel() {
             }
             
             withContext(Dispatchers.IO) {
-                val seriesDataStore = JellyfinApp.instance.seriesDataStore
-                val episodeDataStore = JellyfinApp.instance.episodeDataStore
-                
                 // 获取有视频缓存的剧集 ID 列表（这些不能被删除）
                 val allSeriesList = seriesDataStore.getAllSeries()
                 val cachedSeriesIds = allSeriesList

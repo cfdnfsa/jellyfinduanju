@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.wjp.jellyfinduanju.data.model.ServerConfig
 import com.wjp.jellyfinduanju.data.model.UserSession
 import com.wjp.jellyfinduanju.data.repository.AuthRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * SettingsViewModel - 设置页面的 ViewModel
@@ -20,7 +22,8 @@ import kotlinx.coroutines.launch
  * 2. 显示当前连接的服务器信息
  * 3. 退出登录
  */
-class SettingsViewModel(
+@HiltViewModel
+class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository
 ) : ViewModel() {
     

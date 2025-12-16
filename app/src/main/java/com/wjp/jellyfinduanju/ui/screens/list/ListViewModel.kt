@@ -1,13 +1,13 @@
 package com.wjp.jellyfinduanju.ui.screens.list
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.repository.DetailRepository
 import com.wjp.jellyfinduanju.data.repository.SeriesRepository
 import com.wjp.jellyfinduanju.data.settings.AppSettings
 import com.wjp.jellyfinduanju.download.DownloadManager
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.Collator
 import java.util.Locale
+import javax.inject.Inject
 
 /**
  * ListViewModel - 剧集列表页面的 ViewModel
@@ -26,7 +27,8 @@ import java.util.Locale
  * 4. 提供图片 URL
  * 5. 批量操作（标记已看/缓存/删除）
  */
-class ListViewModel(
+@HiltViewModel
+class ListViewModel @Inject constructor(
     private val seriesRepository: SeriesRepository,
     private val detailRepository: DetailRepository
 ) : ViewModel() {
@@ -845,21 +847,3 @@ data class ListUiState(
     /** 视图模式：云端 / 本地 */
     val viewMode: ViewMode = ViewMode.CLOUD
 )
-
-/**
- * ListViewModelFactory - ListViewModel 的工厂类
- * 
- * 用于创建带参数的 ViewModel
- */
-class ListViewModelFactory(
-    private val seriesRepository: SeriesRepository,
-    private val detailRepository: DetailRepository
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(ListViewModel::class.java)) {
-            return ListViewModel(seriesRepository, detailRepository) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
-}

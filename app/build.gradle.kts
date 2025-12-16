@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization) // Kotlin 序列化插件
+    alias(libs.plugins.hilt) // Hilt 依赖注入
+    alias(libs.plugins.kotlin.kapt) // 注解处理器
 }
 
 android {
@@ -92,6 +94,11 @@ dependencies {
     
     // 文件访问
     implementation(libs.androidx.documentfile)
+    
+    // Hilt 依赖注入
+    implementation(libs.hilt.android)
+    kapt(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
     
     // Testing
     testImplementation(libs.junit)

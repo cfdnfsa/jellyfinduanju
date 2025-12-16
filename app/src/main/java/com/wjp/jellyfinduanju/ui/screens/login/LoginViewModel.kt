@@ -4,11 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.wjp.jellyfinduanju.data.model.ServerConfig
 import com.wjp.jellyfinduanju.data.repository.AuthRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * LoginViewModel.kt - 登录页面的 ViewModel
@@ -22,8 +24,17 @@ import kotlinx.coroutines.launch
  * - 使用 StateFlow 持有状态
  * - UI 收集 StateFlow，状态变化时自动更新
  * - 单向数据流：用户操作 -> ViewModel 更新状态 -> UI 响应
+ * 
+ * @HiltViewModel 注解：
+ * - 让 Hilt 自动注入 ViewModel 的依赖
+ * - 无需手动创建 ViewModelFactory
+ * 
+ * @Inject 注解：
+ * - 标记构造函数，告诉 Hilt 如何创建这个 ViewModel
+ * - Hilt 会自动注入 authRepository
  */
-class LoginViewModel(
+@HiltViewModel
+class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository
 ) : ViewModel() {
     

@@ -14,8 +14,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.navigation.compose.hiltViewModel
+import dagger.hilt.android.EntryPointAccessors
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -27,26 +30,17 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.wjp.jellyfinduanju.navigation.BottomNavItem
 import com.wjp.jellyfinduanju.ui.screens.download.DownloadScreen
-import com.wjp.jellyfinduanju.ui.screens.download.DownloadViewModel
-import com.wjp.jellyfinduanju.ui.screens.download.DownloadViewModelFactory
 import com.wjp.jellyfinduanju.ui.screens.list.ListScreen
-import com.wjp.jellyfinduanju.ui.screens.list.ListViewModel
-import com.wjp.jellyfinduanju.ui.screens.list.ListViewModelFactory
+import com.wjp.jellyfinduanju.data.local.SeriesDataStore
+import com.wjp.jellyfinduanju.data.repository.AuthRepository
+import com.wjp.jellyfinduanju.ui.screens.list.ListScreen
 import com.wjp.jellyfinduanju.ui.screens.login.LoginScreen
-import com.wjp.jellyfinduanju.ui.screens.login.LoginViewModel
-import com.wjp.jellyfinduanju.ui.screens.login.LoginViewModelFactory
 import com.wjp.jellyfinduanju.ui.screens.detail.DetailScreen
-import com.wjp.jellyfinduanju.ui.screens.detail.DetailViewModel
-import com.wjp.jellyfinduanju.ui.screens.detail.DetailViewModelFactory
 import com.wjp.jellyfinduanju.ui.screens.settings.SettingsScreen
-import com.wjp.jellyfinduanju.ui.screens.settings.SettingsViewModel
-import com.wjp.jellyfinduanju.ui.screens.settings.SettingsViewModelFactory
 import com.wjp.jellyfinduanju.ui.screens.settings.cache.CacheSettingsScreen
 import com.wjp.jellyfinduanju.ui.screens.settings.tag.TagManageScreen
 import com.wjp.jellyfinduanju.ui.screens.settings.folder.LocalFolderManageScreen
 import com.wjp.jellyfinduanju.ui.screens.player.PlayerScreen
-import com.wjp.jellyfinduanju.ui.screens.player.PlayerViewModel
-import com.wjp.jellyfinduanju.ui.screens.player.PlayerViewModelFactory
 
 // ==================== 导航路由定义 ====================
 
@@ -83,10 +77,27 @@ private object Routes {
  * 2. 未登录 -> 显示登录页
  * 3. 已登录 -> 显示主页（带底部导航）
  */
+/**
+ * MainAppEntryPoint - Hilt EntryPoint
+ * 用于在 Composable 中获取依赖
+ */
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+interface MainAppEntryPoint {
+    fun authRepository(): AuthRepository
+}
+
 @Composable
 fun MainApp() {
-    // 获取 Application 实例中的 Repository
-    val authRepository = JellyfinApp.instance.authRepository
+    // 通过 Hilt EntryPoint 获取 AuthRepository
+    val context = LocalContext.current
+    val authRepository = remember {
+        val hiltEntryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            MainAppEntryPoint::class.java
+        )
+        hiltEntryPoint.authRepository()
+    }
     
     // 收集用户会话状态
     // 返回 null 表示未登录，返回 UserSession 表示已登录
@@ -123,13 +134,8 @@ fun MainApp() {
 private fun LoginContent(
     onLoginSuccess: () -> Unit
 ) {
-    // 获取 Repository
-    val authRepository = JellyfinApp.instance.authRepository
-    
-    // 使用 Factory 创建 ViewModel
-    val viewModel: LoginViewModel = viewModel(
-        factory = LoginViewModelFactory(authRepository)
-    )
+    // 使用 Hilt 自动注入 ViewModel
+    val viewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.login.LoginViewModel>()
     
     LoginScreen(
         viewModel = viewModel,
@@ -257,15 +263,29 @@ private fun MainBottomNavigationBar(
  * 
  * 管理所有页面的导航
  */
+/**
+ * MainNavHostEntryPoint - Hilt EntryPoint
+ */
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+interface MainNavHostEntryPoint {
+    fun seriesDataStore(): SeriesDataStore
+}
+
 @Composable
 private fun MainNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
-    // 获取 Repository
-    val authRepository = JellyfinApp.instance.authRepository
-    val seriesRepository = JellyfinApp.instance.seriesRepository
-    val detailRepository = JellyfinApp.instance.detailRepository
+    // 通过 Hilt EntryPoint 获取依赖
+    val context = LocalContext.current
+    val seriesDataStore = remember {
+        val hiltEntryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            MainNavHostEntryPoint::class.java
+        )
+        hiltEntryPoint.seriesDataStore()
+    }
     
     NavHost(
         navController = navController,
@@ -276,9 +296,7 @@ private fun MainNavHost(
         
         // 列表页
         composable(BottomNavItem.List.route) {
-            val listViewModel: ListViewModel = viewModel(
-                factory = ListViewModelFactory(seriesRepository, detailRepository)
-            )
+            val listViewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.list.ListViewModel>()
             ListScreen(
                 viewModel = listViewModel,
                 onSeriesClick = { series ->
@@ -290,13 +308,7 @@ private fun MainNavHost(
         
         // 下载页
         composable(BottomNavItem.Download.route) {
-            val downloadViewModel: DownloadViewModel = viewModel(
-                factory = DownloadViewModelFactory(
-                    JellyfinApp.instance.downloadDataStore,
-                    JellyfinApp.instance.seriesDataStore,
-                    JellyfinApp.instance.episodeDataStore
-                )
-            )
+            val downloadViewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.download.DownloadViewModel>()
             DownloadScreen(
                 viewModel = downloadViewModel,
                 onNavigateToDetail = { seriesId ->
@@ -307,9 +319,7 @@ private fun MainNavHost(
         
         // 设置页
         composable(BottomNavItem.Settings.route) {
-            val settingsViewModel: SettingsViewModel = viewModel(
-                factory = SettingsViewModelFactory(authRepository)
-            )
+            val settingsViewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.settings.SettingsViewModel>()
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onNavigateToCacheSettings = {
@@ -338,8 +348,8 @@ private fun MainNavHost(
             TagManageScreen(
                 onBack = { navController.popBackStack() },
                 onDeleteTag = { tag ->
-                    // 删除标签时，从所有剧集中移除该标签
-                    seriesRepository.removeTagFromAllSeries(tag)
+                    // 注意：这个回调在 TagManageScreen 中有默认实现，这里可以省略
+                    // 如果需要在删除标签时做额外处理，可以在这里添加
                 }
             )
         }
@@ -361,16 +371,10 @@ private fun MainNavHost(
             val seriesId = backStackEntry.arguments?.getString("seriesId") ?: ""
             
             // 从本地数据获取剧集信息
-            val series = JellyfinApp.instance.seriesDataStore.getSeries(seriesId)
+            val series = seriesDataStore.getSeries(seriesId)
             
             if (series != null) {
-                val detailViewModel: DetailViewModel = viewModel(
-                    factory = DetailViewModelFactory(
-                        detailRepository = JellyfinApp.instance.detailRepository,
-                        seriesRepository = seriesRepository,
-                        series = series
-                    )
-                )
+                val detailViewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.detail.DetailViewModel>()
                 DetailScreen(
                     viewModel = detailViewModel,
                     onBack = { navController.popBackStack() },
@@ -396,20 +400,12 @@ private fun MainNavHost(
             )
         ) { backStackEntry ->
             val seriesId = backStackEntry.arguments?.getString("seriesId") ?: ""
-            val episodeId = backStackEntry.arguments?.getString("episodeId") ?: ""
             
             // 从本地数据获取剧集信息
-            val series = JellyfinApp.instance.seriesDataStore.getSeries(seriesId)
+            val series = seriesDataStore.getSeries(seriesId)
             
             if (series != null) {
-                val playerViewModel: PlayerViewModel = viewModel(
-                    factory = PlayerViewModelFactory(
-                        detailRepository = JellyfinApp.instance.detailRepository,
-                        seriesRepository = JellyfinApp.instance.seriesRepository,
-                        series = series,
-                        initialEpisodeId = episodeId
-                    )
-                )
+                val playerViewModel = hiltViewModel<com.wjp.jellyfinduanju.ui.screens.player.PlayerViewModel>()
                 PlayerScreen(
                     viewModel = playerViewModel,
                     onBack = { navController.popBackStack() }

@@ -1,8 +1,9 @@
 package com.wjp.jellyfinduanju.ui.screens.detail
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.wjp.jellyfinduanju.data.local.SeriesDataStore
 import com.wjp.jellyfinduanju.data.model.DownloadStatus
 import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
 import com.wjp.jellyfinduanju.data.model.SeasonLocalData
@@ -10,6 +11,7 @@ import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.repository.DetailRepository
 import com.wjp.jellyfinduanju.data.repository.SeriesRepository
 import com.wjp.jellyfinduanju.download.DownloadManager
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
 /**
  * DetailViewModel - 剧集详情页的 ViewModel
@@ -37,13 +40,23 @@ import kotlinx.coroutines.withContext
  * 
  * @property detailRepository 详情数据仓库
  * @property seriesRepository 剧集仓库（用于删除后清理）
- * @property series 当前剧集信息
+ * @property seriesDataStore 剧集数据存储（用于获取剧集信息）
+ * @property savedStateHandle SavedStateHandle（用于获取导航参数）
  */
-class DetailViewModel(
+@HiltViewModel
+class DetailViewModel @Inject constructor(
     private val detailRepository: DetailRepository,
     private val seriesRepository: SeriesRepository,
-    private val series: SeriesLocalData
+    private val seriesDataStore: SeriesDataStore,
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+    
+    // 从导航参数获取 seriesId
+    private val seriesId: String = savedStateHandle.get<String>("seriesId") ?: ""
+    
+    // 从 SeriesDataStore 获取剧集信息
+    private val series: SeriesLocalData = seriesDataStore.getSeries(seriesId) 
+        ?: throw IllegalArgumentException("Series not found: $seriesId")
     
     // ==================== UI 状态 ====================
     
@@ -861,23 +874,3 @@ data class DetailUiState(
     val cachedEpisodeCount: Int
         get() = episodesBySeasonId.values.flatten().count { it.isCached }
 }
-
-/**
- * DetailViewModelFactory - DetailViewModel 的工厂类
- * 
- * 用于创建带参数的 ViewModel
- */
-class DetailViewModelFactory(
-    private val detailRepository: DetailRepository,
-    private val seriesRepository: SeriesRepository,
-    private val series: SeriesLocalData
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(DetailViewModel::class.java)) {
-            return DetailViewModel(detailRepository, seriesRepository, series) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
-}
-
