@@ -18,8 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.wjp.jellyfinduanju.di.entrypoint.rememberAuthRepository
-import com.wjp.jellyfinduanju.di.entrypoint.rememberSeriesDataStore
+import com.wjp.jellyfinduanju.di.entrypoint.getAuthRepository
+import com.wjp.jellyfinduanju.di.entrypoint.getSeriesDataStore
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -86,9 +86,9 @@ private object Routes {
  */
 @Composable
 fun MainApp() {
-    // 通过扩展函数获取 AuthRepository（简洁优雅的方式）
-    // 类似于 hiltViewModel()，符合 Compose 规范
-    val authRepository = rememberAuthRepository()
+    // 通过 EntryPoint 获取 AuthRepository，使用 remember 缓存
+    // remember 确保在重组时不会重复创建实例
+    val authRepository = remember { getAuthRepository() }
     
     // collectAsState：将 Flow 转换为 Compose State，自动触发重组
     // initial = null：指定初始值，在 Flow 发出第一个值之前使用
@@ -272,7 +272,8 @@ private fun MainNavHost(
     modifier: Modifier = Modifier
 ) {
     // 获取剧集数据存储，用于在详情页和播放页获取数据
-    val seriesDataStore = rememberSeriesDataStore()
+    // 使用 remember 缓存，避免每次重组都重新获取
+    val seriesDataStore = remember { getSeriesDataStore() }
     
     // NavHost：导航容器，管理页面的显示和切换
     NavHost(
