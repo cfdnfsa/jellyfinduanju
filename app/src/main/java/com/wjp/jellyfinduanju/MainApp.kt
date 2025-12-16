@@ -86,9 +86,8 @@ private object Routes {
  */
 @Composable
 fun MainApp() {
-    // 通过 EntryPoint 获取 AuthRepository，使用 remember 缓存
-    // remember 确保在重组时不会重复创建实例
-    val authRepository = remember { getAuthRepository() }
+    // 通过 EntryPoint 获取 AuthRepository（已内置缓存）
+    val authRepository = getAuthRepository()
     
     // collectAsState：将 Flow 转换为 Compose State，自动触发重组
     // initial = null：指定初始值，在 Flow 发出第一个值之前使用
@@ -271,9 +270,8 @@ private fun MainNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
-    // 获取剧集数据存储，用于在详情页和播放页获取数据
-    // 使用 remember 缓存，避免每次重组都重新获取
-    val seriesDataStore = remember { getSeriesDataStore() }
+    // 获取剧集数据存储，用于在详情页和播放页获取数据（已内置缓存）
+    val seriesDataStore = getSeriesDataStore()
     
     // NavHost：导航容器，管理页面的显示和切换
     NavHost(

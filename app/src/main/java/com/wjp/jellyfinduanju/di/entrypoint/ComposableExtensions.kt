@@ -14,10 +14,30 @@ import dagger.hilt.android.EntryPointAccessors
  * 
  * ========== 设计理念 ==========
  * 
- * 这些函数不包含 remember 逻辑，原因：
- * 1. 让调用方明确看到 remember 的使用
- * 2. 更透明，符合 Compose 的显式原则
- * 3. 调用方可以根据需要决定是否缓存
+ * 为什么 remember 在函数内部而不是调用处？
+ * 
+ * 技术原因：
+ * - remember { } 的 lambda 不是 @Composable 上下文
+ * - LocalContext.current 只能在 @Composable 中调用
+ * - 因此无法写成：remember { getAuthRepository() }
+ * 
+ * 正确方式：
+ * ```
+ * @Composable
+ * fun getAuthRepository(): AuthRepository {
+ *     val context = LocalContext.current  // ← 必须在 @Composable 中
+ *     return remember {                    // ← remember 包裹获取逻辑
+ *         EntryPointAccessors.fromApplication(...)
+ *     }
+ * }
+ * ```
+ * 
+ * 错误方式：
+ * ```
+ * val repo = remember { getAuthRepository() }  // ❌ 编译错误！
+ * // 因为 getAuthRepository() 内部有 LocalContext.current
+ * // 但 remember { } 不是 @Composable 上下文
+ * ```
  * 
  * ========== @Composable 注解说明 ==========
  * 
@@ -52,12 +72,19 @@ import dagger.hilt.android.EntryPointAccessors
  * // ✅ 正确：在 @Composable 函数中调用
  * @Composable
  * fun MyScreen() {
- *     val repo = remember { getAuthRepository() }  // 正确
+ *     val repo = getAuthRepository()  // 正确
  * }
  * 
  * // ❌ 错误：在普通函数中调用
  * fun loadData() {
  *     val repo = getAuthRepository()  // 编译错误！
+ * }
+ * 
+ * // ❌ 错误：在 remember 中调用
+ * @Composable
+ * fun MyScreen() {
+ *     val repo = remember { getAuthRepository() }  // 编译错误！
+ *     // 因为 remember { } 不是 @Composable 上下文
  * }
  * ```
  * 
@@ -72,8 +99,8 @@ import dagger.hilt.android.EntryPointAccessors
  * ```
  * @Composable
  * fun MyScreen() {
- *     // 显式使用 remember，让缓存逻辑清晰可见
- *     val authRepository = remember { getAuthRepository() }
+ *     // 直接调用即可，内部已缓存
+ *     val authRepository = getAuthRepository()
  *     
  *     // 使用 authRepository
  *     val userSession by authRepository.userSession.collectAsState(initial = null)
@@ -81,21 +108,20 @@ import dagger.hilt.android.EntryPointAccessors
  * ```
  * 
  * 优点：
- * 1. 透明：调用方明确看到 remember 缓存
- * 2. 灵活：可以根据需要传递 keys 给 remember
+ * 1. 简洁：一行代码获取依赖
+ * 2. 性能：内部已使用 remember 缓存
  * 3. 统一：所有 EntryPoint 访问逻辑集中管理
  * 4. 类型安全：编译时检查，避免运行时错误
  */
 
 /**
- * 在 Composable 中获取 AuthRepository
+ * 在 Composable 中获取 AuthRepository（带缓存）
  * 
  * 作用：提供用户认证、会话管理等功能
  * 
- * 注意：
- * - 这个函数每次调用都会从 EntryPoint 获取依赖
- * - 建议在调用处使用 remember { } 缓存结果
- * - 这样可以让调用方明确看到缓存逻辑
+ * 设计说明：
+ * - 内部已使用 remember 缓存，调用方不需要再包装
+ * - 这样既能看到是获取依赖的操作，又有缓存优化
  * 
  * 使用场景：
  * - MainApp：检查登录状态
@@ -106,8 +132,8 @@ import dagger.hilt.android.EntryPointAccessors
  * ```
  * @Composable
  * fun MyScreen() {
- *     // 显式使用 remember 缓存，让代码更清晰
- *     val authRepository = remember { getAuthRepository() }
+ *     // 直接调用，已内置 remember 缓存
+ *     val authRepository = getAuthRepository()
  *     val userSession by authRepository.userSession.collectAsState(initial = null)
  * }
  * ```
@@ -119,16 +145,19 @@ fun getAuthRepository(): AuthRepository {
     // LocalContext.current - 只能在 @Composable 中访问
     val context = LocalContext.current
     
-    // 通过 EntryPoint 从 Hilt 容器获取依赖
-    // 类似于 Spring 的 applicationContext.getBean(AuthRepository.class)
-    return EntryPointAccessors.fromApplication(
-        context.applicationContext,
-        GlobalEntryPoint::class.java
-    ).authRepository()
+    // 使用 remember 缓存，避免每次重组都重新获取
+    return remember {
+        // 通过 EntryPoint 从 Hilt 容器获取依赖
+        // 类似于 Spring 的 applicationContext.getBean(AuthRepository.class)
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            GlobalEntryPoint::class.java
+        ).authRepository()
+    }
 }
 
 /**
- * 在 Composable 中获取 SeriesDataStore
+ * 在 Composable 中获取 SeriesDataStore（带缓存）
  * 
  * 作用：提供本地剧集数据的读写功能
  * 
@@ -141,7 +170,8 @@ fun getAuthRepository(): AuthRepository {
  * ```
  * @Composable
  * fun MyScreen() {
- *     val seriesDataStore = remember { getSeriesDataStore() }
+ *     // 直接调用，已内置 remember 缓存
+ *     val seriesDataStore = getSeriesDataStore()
  *     // 使用 seriesDataStore
  * }
  * ```
@@ -151,10 +181,12 @@ fun getAuthRepository(): AuthRepository {
 @Composable
 fun getSeriesDataStore(): SeriesDataStore {
     val context = LocalContext.current
-    return EntryPointAccessors.fromApplication(
-        context.applicationContext,
-        GlobalEntryPoint::class.java
-    ).seriesDataStore()
+    return remember {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            GlobalEntryPoint::class.java
+        ).seriesDataStore()
+    }
 }
 
 // ========== 扩展指南 ==========
@@ -167,15 +199,17 @@ fun getSeriesDataStore(): SeriesDataStore {
 // @Composable  // ← 必须添加此注解
 // fun getDownloadManager(): DownloadManager {
 //     val context = LocalContext.current  // 需要 @Composable
-//     return EntryPointAccessors.fromApplication(
-//         context.applicationContext,
-//         GlobalEntryPoint::class.java
-//     ).downloadManager()
+//     return remember {                    // ← remember 必须在函数内部
+//         EntryPointAccessors.fromApplication(
+//             context.applicationContext,
+//             GlobalEntryPoint::class.java
+//         ).downloadManager()
+//     }
 // }
 //
 // 使用时：
 // @Composable
 // fun MyScreen() {
-//     val downloadManager = remember { getDownloadManager() }
+//     val downloadManager = getDownloadManager()  // 直接调用即可
 //     // 使用 downloadManager
 // }
