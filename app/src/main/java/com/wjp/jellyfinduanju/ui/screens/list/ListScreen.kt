@@ -1,6 +1,9 @@
 package com.wjp.jellyfinduanju.ui.screens.list
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import com.wjp.jellyfinduanju.ui.components.SearchableTopBar
+import com.wjp.jellyfinduanju.ui.components.SortMenuItem
+import com.wjp.jellyfinduanju.ui.components.SortOption
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -41,9 +44,12 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Visibility
@@ -198,9 +204,42 @@ fun ListScreen(
  * MainScreenContent - 主界面内容
  * 
  * 包含顶部栏、标签筛选栏、内容分页器
+ *
+ * Scaffold(
+ *     topBar = {                    // 顶栏插槽
+ *         TopAppBar(title = { Text("列表") })
+ *     },
+ *     bottomBar = {                 // 底部导航栏插槽
+ *         NavigationBar { ... }
+ *     },
+ *     snackbarHost = {              // Snackbar 提示插槽
+ *         SnackbarHost(snackbarHostState)
+ *     },
+ *     floatingActionButton = {      // 浮动按钮插槽（可选）
+ *         FloatingActionButton(onClick = {}) {
+ *             Icon(Icons.Default.Add, null)
+ *         }
+ *     }
+ * ) { paddingValues ->             // 内容区域（lambda 参数）
+ *     // paddingValues 自动计算了顶栏和底栏占用的空间
+ *     LazyColumn(
+ *         modifier = Modifier.padding(paddingValues)  // 避免被遮挡
+ *     ) {
+ *         // 内容
+ *     }
+ * }
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
+/**
+ * MainScreenContent - 列表页主内容区域
+ * 
+ * @param viewModel ListViewModel，管理页面状态和业务逻辑
+ * @param uiState 当前 UI 状态，包含剧集列表、加载状态等
+ * @param snackbarHostState Snackbar 状态管理器，用于显示错误提示
+ * @param allTags 所有可用的标签列表，用于标签筛选栏
+ * @param pagerState Pager 状态，管理标签页切换
+ * @param onSeriesClick 点击剧集的回调函数，传递被点击的剧集数据
+ */
 private fun MainScreenContent(
     viewModel: ListViewModel,
     uiState: ListUiState,
@@ -214,25 +253,21 @@ private fun MainScreenContent(
     
     // Scaffold 提供了标准的 Material Design 布局结构
     Scaffold(
-        // 顶部栏：搜索框、排序按钮、模式切换、刷新按钮
+        // 顶部栏：搜索框 + 右侧操作按钮
         topBar = {
-            SearchTopBar(
+            ListSearchTopBar(
                 viewModel = viewModel,
                 uiState = uiState
             )
         },
         // 底部消息提示（用于显示错误信息）
         snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { paddingValues ->
+    ) { paddingValues -> // paddingValues: 自动计算padding要不然内容区会被挡住
         // 主内容区域（垂直布局）
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)  // 应用 Scaffold 的内边距，避免被顶部栏遮挡
-        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             // 标签筛选栏（全部、正在看、已缓存等）
             TagFilterBar(
-                allTags = allTags,
+                allTags = allTags,  // 所有标签
                 currentPage = pagerState.currentPage,  // 当前选中的标签页
                 onTagSelected = { tag ->
                     // 点击标签时，滑动 Pager 到对应页面
@@ -370,204 +405,144 @@ private fun SyncPagerWithViewModel(
 }
 
 /**
- * SearchTopBar - 搜索栏和操作按钮
+ * ListSearchTopBar - 列表页的搜索顶栏
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SearchTopBar(
+private fun ListSearchTopBar(
     viewModel: ListViewModel,
     uiState: ListUiState
 ) {
-    val focusManager = LocalFocusManager.current
+    // 使用通用的 SearchableTopBar 组件
+    SearchableTopBar(
+        searchQuery = uiState.searchQuery,  // 当前搜索关键词
+        onSearchQueryChange = { viewModel.updateSearchQuery(it) },  // 搜索变化
+        onClearSearch = { viewModel.clearSearch() },  // 清除搜索
+        actions = {  // 右侧操作按钮（通过插槽自定义）
+            // 排序按钮 + 排序菜单
+            SortButton(viewModel = viewModel, uiState = uiState)
+            // 视图模式切换按钮（云端 ↔ 本地）
+            ViewModeToggleButton(viewModel = viewModel, uiState = uiState)
+            // 刷新按钮
+            RefreshButton(viewModel = viewModel, uiState = uiState)
+        }
+    )
+}
+
+/**
+ * SortButton - 排序按钮 + 排序菜单
+ * 
+ * @param viewModel ViewModel
+ * @param uiState UI 状态
+ */
+@Composable
+private fun SortButton(
+    viewModel: ListViewModel,
+    uiState: ListUiState
+) {
+    // 排序菜单显示状态（组件内部管理）
     var showSortMenu by remember { mutableStateOf(false) }
     
-    TopAppBar(
-        title = {
-            // 搜索框
-            OutlinedTextField(
-                value = uiState.searchQuery,
-                onValueChange = { viewModel.updateSearchQuery(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = 8.dp),
-                placeholder = {
-                    Text(
-                        "搜索",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "搜索",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                trailingIcon = {
-                    if (uiState.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.clearSearch() }) {
-                            Icon(
-                                imageVector = Icons.Default.Clear,
-                                contentDescription = "清除",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(28.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                ),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                keyboardOptions = KeyboardOptions(
-                    imeAction = ImeAction.Search
-                ),
-                keyboardActions = KeyboardActions(
-                    onSearch = {
-                        focusManager.clearFocus()
-                    }
-                )
-            )
-        },
-        actions = {
-            // 排序按钮
-            Box {
-                IconButton(onClick = { showSortMenu = true }) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Sort,
-                        contentDescription = "排序"
-                    )
-                }
-                
-                // 排序菜单
-                DropdownMenu(
-                    expanded = showSortMenu,
-                    onDismissRequest = { showSortMenu = false }
-                ) {
-                    // 按名称
-                    DropdownMenuItem(
-                        text = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("按名称")
-                                if (uiState.sortType == SortType.NAME) {
-                                    Icon(
-                                        imageVector = if (uiState.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        },
-                        onClick = {
-                            viewModel.toggleSortType(SortType.NAME)
-                            showSortMenu = false
-                        }
-                    )
-                    
-                    // 按更新时间
-                    DropdownMenuItem(
-                        text = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("按更新时间")
-                                if (uiState.sortType == SortType.UPDATE_TIME) {
-                                    Icon(
-                                        imageVector = if (uiState.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        },
-                        onClick = {
-                            viewModel.toggleSortType(SortType.UPDATE_TIME)
-                            showSortMenu = false
-                        }
-                    )
-                    
-                    // 按播放时间
-                    DropdownMenuItem(
-                        text = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("按播放时间")
-                                if (uiState.sortType == SortType.PLAY_TIME) {
-                                    Icon(
-                                        imageVector = if (uiState.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        },
-                        onClick = {
-                            viewModel.toggleSortType(SortType.PLAY_TIME)
-                            showSortMenu = false
-                        }
-                    )
-                }
-            }
-            
-            // 模式切换按钮（云端 ↔ 本地）
-            IconButton(onClick = { viewModel.toggleViewMode() }) {
-                Icon(
-                    imageVector = if (uiState.viewMode == ViewMode.CLOUD) {
-                        Icons.Default.CloudQueue
-                    } else {
-                        Icons.Default.Folder
-                    },
-                    contentDescription = if (uiState.viewMode == ViewMode.CLOUD) {
-                        "切换到本地"
-                    } else {
-                        "切换到云端"
-                    },
-                    tint = if (uiState.viewMode == ViewMode.CLOUD) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.secondary
-                    }
-                )
-            }
-            
-            // 刷新按钮
-            IconButton(
-                onClick = { viewModel.refreshSeriesList() },
-                enabled = !uiState.isLoading
-            ) {
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "刷新"
-                    )
-                }
-            }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface
+    // 排序选项配置列表（数据驱动）
+    val sortOptions = remember {
+        listOf(
+            SortOption(SortType.NAME, "按名称", Icons.Default.SortByAlpha),
+            SortOption(SortType.UPDATE_TIME, "按更新时间", Icons.Default.Update),
+            SortOption(SortType.PLAY_TIME, "按播放时间", Icons.Default.PlayArrow)
         )
-    )
+    }
+    
+    Box {
+        // 排序按钮
+        IconButton(onClick = { showSortMenu = true }) {  // 点击打开菜单
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Sort,
+                contentDescription = "排序"
+            )
+        }
+
+        // 排序菜单（数据驱动 + forEach 循环）
+        DropdownMenu(
+            expanded = showSortMenu,  // 根据状态显示/隐藏
+            onDismissRequest = { showSortMenu = false }  // 点击外部关闭
+        ) {
+            // 遍历排序选项列表，生成菜单项
+            sortOptions.forEach { option ->
+                SortMenuItem(
+                    label = option.label,  // 显示文本
+                    icon = option.icon,  // 图标
+                    isSelected = uiState.sortType == option.type,  // 是否选中
+                    sortAscending = uiState.sortAscending,  // 升序/降序
+                    onClick = {
+                        viewModel.toggleSortType(option.type)  // 切换排序类型
+                        showSortMenu = false  // 关闭菜单
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * ViewModeToggleButton - 视图模式切换按钮（云端 ↔ 本地）
+ * 
+ * @param viewModel ViewModel
+ * @param uiState UI 状态
+ */
+@Composable
+private fun ViewModeToggleButton(
+    viewModel: ListViewModel,
+    uiState: ListUiState
+) {
+    IconButton(onClick = { viewModel.toggleViewMode() }) {
+        Icon(
+            imageVector = if (uiState.viewMode == ViewMode.CLOUD) {
+                Icons.Default.CloudQueue  // 云端图标
+            } else {
+                Icons.Default.Folder  // 本地文件夹图标
+            },
+            contentDescription = if (uiState.viewMode == ViewMode.CLOUD) {
+                "切换到本地"
+            } else {
+                "切换到云端"
+            },
+            tint = if (uiState.viewMode == ViewMode.CLOUD) {
+                MaterialTheme.colorScheme.primary  // 云端：主题色
+            } else {
+                MaterialTheme.colorScheme.secondary  // 本地：次要色
+            }
+        )
+    }
+}
+
+/**
+ * RefreshButton - 刷新按钮
+ * 
+ * @param viewModel ViewModel
+ * @param uiState UI 状态
+ */
+@Composable
+private fun RefreshButton(
+    viewModel: ListViewModel,
+    uiState: ListUiState
+) {
+    IconButton(
+        onClick = { viewModel.refreshSeriesList() },
+        enabled = !uiState.isLoading  // 加载中时禁用
+    ) {
+        if (uiState.isLoading) {
+            // 加载中：显示进度指示器
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp
+            )
+        } else {
+            // 空闲：显示刷新图标
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = "刷新"
+            )
+        }
+    }
 }
 
 /**
@@ -659,9 +634,9 @@ private fun DialogContent(
                                 Icon(
                                     imageVector = if (series.isVideoCached) Icons.Default.Download else Icons.Default.CloudQueue,
                                     contentDescription = null,
-                                    tint = if (series.isVideoCached) 
-                                        MaterialTheme.colorScheme.tertiary 
-                                    else 
+                                    tint = if (series.isVideoCached)
+                                        MaterialTheme.colorScheme.tertiary
+                                    else
                                         MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -669,13 +644,13 @@ private fun DialogContent(
                                 Text(
                                     text = if (series.isVideoCached) "已缓存" else "未缓存",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = if (series.isVideoCached) 
-                                        MaterialTheme.colorScheme.tertiary 
-                                    else 
+                                    color = if (series.isVideoCached)
+                                        MaterialTheme.colorScheme.tertiary
+                                    else
                                         MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            
+
                             // 云端文件夹标签
                             series.cloudFolderTag?.let { cloudTag ->
                                 Row(
@@ -842,43 +817,52 @@ private fun TagFilterBar(
 
 /**
  * SeriesGrid - 剧集网格列表
- * 
+ *
  * 一行三个的网格布局，支持长按显示菜单
+ * 
+ * @param viewModel 列表 ViewModel（用于处理业务逻辑）
+ * @param uiState UI 状态（包含剧集列表、排序等信息）
+ * @param onSeriesClick 剧集点击回调（点击卡片时触发）
  */
 @Composable
 private fun SeriesGrid(
-    viewModel: ListViewModel,
-    uiState: ListUiState,
-    onSeriesClick: (SeriesLocalData) -> Unit
+    viewModel: ListViewModel,  // 列表 ViewModel
+    uiState: ListUiState,  // UI 状态
+    onSeriesClick: (SeriesLocalData) -> Unit  // 剧集点击回调
 ) {
+    // 网格状态（用于控制滚动位置）
     val gridState = rememberLazyGridState()
-    
+
     // 监听排序变化，滚动到顶部
+    // 当排序类型或升降序发生变化时，自动滚动到列表顶部
     LaunchedEffect(uiState.sortType, uiState.sortAscending) {
-        if (uiState.seriesList.isNotEmpty()) {
-            gridState.scrollToItem(0)
+        if (uiState.seriesList.isNotEmpty()) {  // 仅当列表非空时滚动
+            gridState.scrollToItem(0)  // 滚动到第一项
         }
     }
-    
+
+    // 垂直滚动的网格布局
     LazyVerticalGrid(
-        columns = GridCells.Fixed(3),  // 固定一行三个
-        state = gridState,
-        contentPadding = PaddingValues(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxSize()
+        columns = GridCells.Fixed(3),  // 固定一行三个（3列）
+        state = gridState,  // 网格滚动状态
+        contentPadding = PaddingValues(8.dp),  // 内容边距（四周 8dp）
+        horizontalArrangement = Arrangement.spacedBy(8.dp),  // 列之间的间距
+        verticalArrangement = Arrangement.spacedBy(8.dp),  // 行之间的间距
+        modifier = Modifier.fillMaxSize()  // 填充整个可用空间
     ) {
+        // 遍历剧集列表，生成网格项
         items(
-            items = uiState.seriesList,
-            key = { it.id },
-            contentType = { "series_card" }
-        ) { series ->
+            items = uiState.seriesList,  // 数据源（剧集列表）
+            key = { it.id },  // 唯一标识（用于优化重组性能）
+            contentType = { "series_card" }  // 内容类型（用于优化回收）
+        ) { series ->  // 每个剧集数据
+            // 单个剧集卡片
             SeriesGridItem(
-                series = series,
-                viewModel = viewModel,
-                uiState = uiState,
-                onSeriesClick = onSeriesClick,
-                modifier = Modifier.animateItem()
+                series = series,  // 剧集数据
+                viewModel = viewModel,  // ViewModel
+                uiState = uiState,  // UI 状态
+                onSeriesClick = onSeriesClick,  // 点击回调
+                modifier = Modifier.animateItem()  // 添加动画效果（增删时）
             )
         }
     }
@@ -886,7 +870,7 @@ private fun SeriesGrid(
 
 /**
  * SeriesGridItem - 剧集网格项
- * 
+ *
  * 显示单个剧集的封面图和标题，支持长按显示菜单
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -900,16 +884,16 @@ private fun SeriesGridItem(
 ) {
     // 图片 URL 状态
     var imageUrl by remember { mutableStateOf<String?>(null) }
-    
+
     // 获取图片 URL
     LaunchedEffect(series.id) {
         viewModel.getSeriesImageUrl(series.id) { url ->
             imageUrl = url
         }
     }
-    
+
     val isMenuExpanded = uiState.selectedSeries?.id == series.id
-    
+
     Box(
         modifier = modifier  // 应用从外部传入的 modifier（包含 animateItem）
     ) {
@@ -974,7 +958,7 @@ private fun SeriesGridItem(
                         )
                     }
                 }
-                
+
                 // 左上角：已删除标识或观看进度状态
                 if (series.isDeletedFromServer) {
                     // 优先显示：已从服务器删除（红色）
@@ -1034,7 +1018,7 @@ private fun SeriesGridItem(
                         }
                     }
                 }
-                
+
                 // 右上角：集数和季数标签
                 val episodeCount = series.episodeCount
                 val seasonCount = series.seasonCount
@@ -1062,7 +1046,7 @@ private fun SeriesGridItem(
                     }
                 }
             }
-            
+
             // 标题区域
             Box(
                 modifier = Modifier
@@ -1083,7 +1067,7 @@ private fun SeriesGridItem(
             }
         }
         }  // Card 闭合
-        
+
         // 长按菜单
         DropdownMenu(
             expanded = isMenuExpanded,
@@ -1113,7 +1097,7 @@ private fun SeriesGridItem(
                     }
                 )
             }
-            
+
             // 缓存全部
             DropdownMenuItem(
                 text = { Text("缓存全部") },
@@ -1125,7 +1109,7 @@ private fun SeriesGridItem(
                     )
                 }
             )
-            
+
             // 删除全部缓存
             DropdownMenuItem(
                 text = { Text("删除全部缓存") },
@@ -1138,7 +1122,7 @@ private fun SeriesGridItem(
                     )
                 }
             )
-            
+
             // 设置标签
             DropdownMenuItem(
                 text = { Text("设置标签") },
@@ -1150,17 +1134,17 @@ private fun SeriesGridItem(
                     )
                 }
             )
-            
+
             // 分割线
             HorizontalDivider()
-            
+
             // 删除剧集（危险操作，红色显示）
             DropdownMenuItem(
-                text = { 
+                text = {
                     Text(
                         text = "删除剧集",
                         color = MaterialTheme.colorScheme.error
-                    ) 
+                    )
                 },
                 onClick = { viewModel.showDeleteSeriesDialog() },
                 leadingIcon = {
