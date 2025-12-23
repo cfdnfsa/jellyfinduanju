@@ -4,52 +4,10 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-
-/**
- * MenuItem - 菜单项数据类
- * 
- * @param text 显示文本
- * @param icon 图标
- * @param onClick 点击回调
- * @param textColor 文本颜色（可选，危险操作可用红色）
- * @param iconTint 图标颜色（可选）
- * @param isDivider 是否是分割线（特殊标记，true 时其他字段无效）
- * 
- * 使用示例：
- * ```
- * val menuItems = listOf(
- *     MenuItem("删除", Icons.Default.Delete, textColor = errorColor, iconTint = errorColor) { delete() },
- *     MenuItem.divider(),
- *     MenuItem("取消", Icons.Default.Close) { dismiss() }
- * )
- * 
- * DataDrivenMenu(
- *     expanded = showMenu,
- *     onDismissRequest = { showMenu = false },
- *     items = menuItems
- * )
- * ```
- */
-data class MenuItem(
-    val text: String = "",  // 显示文本
-    val icon: ImageVector? = null,  // 图标（可为空）
-    val onClick: () -> Unit = {},  // 点击回调
-    val textColor: Color? = null,  // 文本颜色（可选）
-    val iconTint: Color? = null,  // 图标颜色（可选）
-    val isDivider: Boolean = false  // 是否是分割线
-) {
-    companion object {
-        /**
-         * 创建分割线菜单项
-         */
-        fun divider() = MenuItem(isDivider = true)
-    }
-}
+import com.wjp.jellyfinduanju.data.ui.MenuItem
 
 /**
  * DataDrivenMenu - 数据驱动的下拉菜单

@@ -19,19 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-
-/**
- * SortOption - 排序选项配置数据类
- * 
- * @param type 排序类型枚举值
- * @param label 显示文本
- * @param icon 图标（可选）
- */
-data class SortOption<T>(
-    val type: T,          // 排序类型（泛型，支持任意枚举）
-    val label: String,    // 显示文本，如 "按名称"
-    val icon: ImageVector? = null  // 可选图标
-)
+import com.wjp.jellyfinduanju.data.ui.SortOption
 
 /**
  * SortMenuItem - 排序菜单项组件
