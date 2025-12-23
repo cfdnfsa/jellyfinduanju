@@ -101,6 +101,8 @@ import com.wjp.jellyfinduanju.ui.components.menu.SortOption
 import com.wjp.jellyfinduanju.ui.components.topbar.SearchableTopBar
 import kotlinx.coroutines.launch
 
+// ==================== 主入口 ====================
+
 /**
  * ListScreen - 剧集列表页面
  * 
@@ -241,6 +243,7 @@ private fun MainScreenContent(
     ) { paddingValues -> // paddingValues: 自动计算padding要不然内容区会被挡住
         // 主内容区域（垂直布局）
         Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+
             // 标签筛选栏（全部、正在看、已缓存等）
             TagFilterBar(
                 allTags = allTags,  // 所有标签
@@ -287,6 +290,8 @@ private fun MainScreenContent(
         }
     }
 }
+
+// ==================== 生命周期与副作用 ====================
 
 /**
  * SetupLifecycleObserver - 设置生命周期观察者
@@ -379,6 +384,8 @@ private fun SyncPagerWithViewModel(
         }
     }
 }
+
+// ==================== 顶部栏组件 ====================
 
 /**
  * ListSearchTopBar - 列表页的搜索顶栏
@@ -521,6 +528,8 @@ private fun RefreshButton(
     }
 }
 
+// ==================== 对话框 ====================
+
 /**
  * DialogContent - 对话框统一入口
  * 
@@ -614,6 +623,8 @@ private fun getConfirmDialogConfig(
     )
     else -> null  // 非确认类对话框，返回 null
 }
+
+// ==================== 标签筛选栏 ====================
 
 /**
  * TagFilterBar - 标签筛选栏（紧凑胶囊式）
@@ -745,6 +756,8 @@ private fun getTagIcon(tag: String): ImageVector? {
         else -> Icons.Default.Folder  // 其他（文件夹标签）：文件夹图标
     }
 }
+
+// ==================== 剧集网格 ====================
 
 /**
  * SeriesGrid - 剧集网格列表
@@ -1009,6 +1022,8 @@ private fun buildSeriesMenuItems(series: SeriesLocalData, errorColor: Color, vie
     // 删除剧集（弹对话框，菜单会在对话框弹出时自然消失）
     MenuItem(text = "删除剧集", icon = Icons.Default.Delete, textColor = errorColor, iconTint = errorColor, onClick = { viewModel.showDeleteSeriesDialog() })
 )
+
+// ==================== 状态占位组件 ====================
 
 /**
  * LoadingContent - 加载中占位内容
