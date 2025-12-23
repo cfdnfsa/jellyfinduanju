@@ -1,4 +1,4 @@
-package com.wjp.jellyfinduanju.ui.components
+package com.wjp.jellyfinduanju.ui.components.topbar
 
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth

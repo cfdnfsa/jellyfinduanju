@@ -1,4 +1,4 @@
-package com.wjp.jellyfinduanju.ui.components
+package com.wjp.jellyfinduanju.ui.components.media
 
 import android.net.Uri
 import android.view.ViewGroup
@@ -263,4 +263,3 @@ fun rememberExoPlayer(): ExoPlayer {
     
     return exoPlayer
 }
-

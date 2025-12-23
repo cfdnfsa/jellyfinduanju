@@ -52,7 +52,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 
 /**
  * CacheSettingsScreen - 缓存设置页面（有状态组件）
@@ -73,12 +73,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  * - 有状态/无状态分离：此组件有状态，CacheSettingsContent 无状态
  * 
  * @param onBack 返回按钮点击回调，由导航层提供，用于返回上一页
- * @param viewModel 缓存设置页面的 ViewModel，默认通过 viewModel() 创建
+ * @param viewModel 缓存设置页面的 ViewModel，默认通过 hiltViewModel() 创建（使用 Hilt 依赖注入）
  */
 @Composable
 fun CacheSettingsScreen(
     onBack: () -> Unit,
-    viewModel: CacheSettingsViewModel = viewModel()
+    viewModel: CacheSettingsViewModel = hiltViewModel()
 ) {
     // 收集 ViewModel 的状态
     // collectAsState() 会将 StateFlow 转换为 Compose 的 State

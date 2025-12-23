@@ -1,4 +1,4 @@
-package com.wjp.jellyfinduanju.ui.components
+package com.wjp.jellyfinduanju.ui.components.menu
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row

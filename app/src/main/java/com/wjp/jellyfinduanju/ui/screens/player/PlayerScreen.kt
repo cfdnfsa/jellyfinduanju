@@ -85,8 +85,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.ExoPlayer
-import com.wjp.jellyfinduanju.ui.components.VideoPlayer
-import com.wjp.jellyfinduanju.ui.components.rememberExoPlayer
+import com.wjp.jellyfinduanju.ui.components.media.VideoPlayer
+import com.wjp.jellyfinduanju.ui.components.media.rememberExoPlayer
 
 /**
  * ============================================================================

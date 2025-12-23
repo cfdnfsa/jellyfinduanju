@@ -829,10 +829,15 @@ enum class SortType {
  * ListUiState - 剧集列表页面的 UI 状态
  */
 data class ListUiState(
+    /** 是否正在加载数据（显示加载指示器） */
     val isLoading: Boolean = false,
+    /** 剧集列表数据（经过筛选和排序后的列表） */
     val seriesList: List<SeriesLocalData> = emptyList(),
+    /** 列表是否为空（用于显示空状态界面） */
     val isEmpty: Boolean = true,
+    /** 错误信息（如果有错误则显示，通过 Snackbar 提示） */
     val error: String? = null,
+    /** 搜索关键词（用户输入的搜索文本） */
     val searchQuery: String = "",
     /** 当前选中的剧集（用于显示菜单） */
     val selectedSeries: SeriesLocalData? = null,
