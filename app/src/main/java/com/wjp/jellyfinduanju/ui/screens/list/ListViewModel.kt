@@ -356,7 +356,9 @@ class ListViewModel @Inject constructor(
      * @param newSortType 新的排序类型
      */
     fun toggleSortType(newSortType: SortType) {
+        // 排序类型
         val currentSortType = _uiState.value.sortType
+        // 排序方向
         val currentAscending = _uiState.value.sortAscending
         
         // 使用解构声明同时获取排序类型和方向
@@ -375,8 +377,8 @@ class ListViewModel @Inject constructor(
         }
         
         // 持久化保存排序设置
-        AppSettings.listSortType = finalSortType.name
-        AppSettings.listSortAscending = finalAscending
+        AppSettings.listSortType = finalSortType.name  // 列表排序类型
+        AppSettings.listSortAscending = finalAscending  // 列表排序方向
         
         // 更新 UI 状态并重新排序
         _uiState.update { 
