@@ -2,6 +2,7 @@ package com.wjp.jellyfinduanju.ui.screens.list
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.repository.DetailRepository
 import com.wjp.jellyfinduanju.data.repository.SeriesRepository
@@ -12,6 +13,8 @@ import com.wjp.jellyfinduanju.data.ui.SortType
 import com.wjp.jellyfinduanju.data.ui.ViewMode
 import com.wjp.jellyfinduanju.download.DownloadManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +40,11 @@ class ListViewModel @Inject constructor(
     private val detailRepository: DetailRepository
 ) : ViewModel() {
     
+    companion object {
+        // 中文排序器（缓存实例，避免每次排序都创建，提升性能）
+        private val CHINESE_COLLATOR = Collator.getInstance(Locale.CHINESE)
+    }
+    
     // === UI 状态 ===================
     
     private val _uiState = MutableStateFlow(ListUiState())
@@ -44,6 +52,9 @@ class ListViewModel @Inject constructor(
     
     // 完整的剧集列表（用于搜索筛选）
     private var allSeriesList: List<SeriesLocalData> = emptyList()
+    
+    // 搜索防抖任务（避免输入时频繁触发搜索）
+    private var searchJob: Job? = null
     
     // === 初始化 ===================
     
@@ -151,13 +162,23 @@ class ListViewModel @Inject constructor(
     /**
      * 更新搜索关键词
      * 
+     * 使用防抖机制：等待用户停止输入 300ms 后才执行搜索
+     * 避免用户快速输入时频繁触发搜索，提升性能和体验
+     * 
      * @param query 搜索关键词
      */
     fun updateSearchQuery(query: String) {
         // 更新搜索关键词
         _uiState.update { it.copy(searchQuery = query) }
-        // 立即应用新的搜索条件
-        applySearchFilter()
+        
+        // 取消之前的搜索任务（用户还在输入中）
+        searchJob?.cancel()
+        
+        // 延迟 300ms 后执行搜索（用户停止输入后才搜索）
+        searchJob = viewModelScope.launch {
+            delay(300)  // 等待 300ms
+            applySearchFilter()  // 执行搜索
+        }
     }
     
     /**
@@ -405,9 +426,8 @@ class ListViewModel @Inject constructor(
         // 根据排序类型进行排序（默认升序）
         val sorted = when (sortType) {
             SortType.NAME -> {
-                // 按名称排序（使用中文拼音排序）
-                val collator = Collator.getInstance(Locale.CHINESE)
-                list.sortedWith(compareBy(collator) { it.name })
+                // 按名称排序（使用中文拼音排序，复用缓存的 Collator 实例）
+                list.sortedWith(compareBy(CHINESE_COLLATOR) { it.name })
             }
             SortType.UPDATE_TIME -> {
                 // 按更新时间排序（使用 lastSyncTime 作为更新时间）
@@ -667,133 +687,241 @@ class ListViewModel @Inject constructor(
             try {
                 if (series.isLocalImport) {
                     // 本地剧集：只更新本地状态（无需同步服务器）
-                    seriesRepository.updateSeriesPlayedStatus(series.id, watched)
-                    
-                    // 更新内存中的列表（避免重新加载）
-                    allSeriesList = allSeriesList.map { 
-                        if (it.id == series.id) {
-                            it.copy(
-                                played = watched,
-                                lastWatchTime = if (watched) System.currentTimeMillis() else it.lastWatchTime
-                            )
-                        } else {
-                            it
-                        }
-                    }
-                    // 重新应用筛选（已看/未看状态可能影响筛选结果）
-                    applySearchFilter()
-                    
-                    // 显示成功提示
-                    _uiState.update { 
-                        it.copy(error = if (watched) "已标记为看完" else "已标记为未看")
-                    }
+                    markLocalSeriesAsWatched(series, watched)
                 } else {
                     // 云端剧集：需要上报服务器
-                    val result = detailRepository.markSeriesAsWatched(series.id, watched)
-                    
-                    result.fold(
-                        onSuccess = {
-                            // 同步更新本地状态
-                            seriesRepository.updateSeriesPlayedStatus(series.id, watched)
-                            
-                            // 显示成功提示
-                            _uiState.update { 
-                                it.copy(error = if (watched) "已标记为看完" else "已标记为未看")
-                            }
-                        },
-                        onFailure = { e ->
-                            // 显示错误提示
-                            _uiState.update { 
-                                it.copy(error = "操作失败: ${e.message}")
-                            }
-                        }
-                    )
+                    markCloudSeriesAsWatched(series, watched)
                 }
             } catch (e: Exception) {
-                _uiState.update { 
-                    it.copy(error = "操作失败: ${e.message}")
-                }
+                showError("操作失败: ${e.message}")
             }
         }
     }
     
     /**
+     * 标记本地剧集为已看/未看
+     * 
+     * 本地剧集无需同步服务器，只更新本地数据库和内存状态
+     * 
+     * @param series 要标记的剧集
+     * @param watched true 标记为已看，false 标记为未看
+     */
+    private suspend fun markLocalSeriesAsWatched(series: SeriesLocalData, watched: Boolean) {
+        // 更新数据库中的播放状态
+        seriesRepository.updateSeriesPlayedStatus(series.id, watched)
+        
+        // 更新内存中的列表（避免重新加载整个列表，提升性能）
+        updateSeriesInMemory(series.id, watched)
+        
+        // 重新应用筛选（已看/未看状态可能影响筛选结果）
+        applySearchFilter()
+        
+        // 显示成功提示
+        showWatchedStatusMessage(watched)
+    }
+    
+    /**
+     * 标记云端剧集为已看/未看
+     * 
+     * 云端剧集需要先上报服务器，成功后再更新本地状态
+     * 
+     * @param series 要标记的剧集
+     * @param watched true 标记为已看，false 标记为未看
+     */
+    private suspend fun markCloudSeriesAsWatched(series: SeriesLocalData, watched: Boolean) {
+        // 调用 API 上报服务器
+        val result = detailRepository.markSeriesAsWatched(series.id, watched)
+        
+        result.fold(
+            onSuccess = {
+                // 服务器更新成功，同步更新本地数据库
+                seriesRepository.updateSeriesPlayedStatus(series.id, watched)
+                
+                // 显示成功提示
+                showWatchedStatusMessage(watched)
+            },
+            onFailure = { e ->
+                // 服务器更新失败，显示错误提示
+                showError("操作失败: ${e.message}")
+            }
+        )
+    }
+    
+    /**
+     * 更新内存中剧集的播放状态
+     * 
+     * 通过 map 操作更新指定剧集的状态，避免重新从数据库加载全部数据
+     * 
+     * @param seriesId 要更新的剧集 ID
+     * @param watched true 标记为已看，false 标记为未看
+     */
+    private fun updateSeriesInMemory(seriesId: String, watched: Boolean) {
+        allSeriesList = allSeriesList.map { series ->
+            if (series.id == seriesId) {
+                // 找到目标剧集，更新播放状态
+                series.copy(
+                    played = watched,
+                    // 如果标记为已看，更新最后观看时间；否则保持原时间
+                    lastWatchTime = if (watched) System.currentTimeMillis() else series.lastWatchTime
+                )
+            } else {
+                // 其他剧集保持不变
+                series
+            }
+        }
+    }
+    
+    /**
+     * 显示已看/未看状态的成功提示消息
+     * 
+     * @param watched true 显示"已标记为看完"，false 显示"已标记为未看"
+     */
+    private fun showWatchedStatusMessage(watched: Boolean) {
+        val message = if (watched) "已标记为看完" else "已标记为未看"
+        _uiState.update { it.copy(error = message) }
+    }
+    
+    /**
+     * 显示错误提示消息
+     * 
+     * @param message 错误消息内容
+     */
+    private fun showError(message: String) {
+        _uiState.update { it.copy(error = message) }
+    }
+    
+    /**
      * 确认缓存全部
+     * 
+     * 将剧集的所有未缓存剧集添加到下载队列
      */
     fun confirmCacheAll() {
         val series = _uiState.value.selectedSeries ?: return
         hideDialog()
         
-        // 本地剧集不需要缓存
+        // 检查是否为本地剧集
         if (series.isLocalImport) {
-            _uiState.update { 
-                it.copy(error = "本地剧集无需缓存")
-            }
+            showError("本地剧集无需缓存")
             return
         }
         
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            setLoading(true)
             
             try {
-                // 1. 获取该剧集的所有季
-                val seasonsResult = detailRepository.refreshSeasons(series.id)
-                seasonsResult.fold(
-                    onSuccess = { seasons ->
-                        // 收集所有未缓存的剧集
-                        val allEpisodesToDownload = mutableListOf<com.wjp.jellyfinduanju.data.model.EpisodeLocalData>()
-                        
-                        // 2. 遍历每个季，获取剧集列表
-                        seasons.forEach { season ->
-                            val episodesResult = detailRepository.refreshEpisodes(series.id, season.id)
-                            episodesResult.fold(
-                                onSuccess = { episodes ->
-                                    // 筛选出未缓存的剧集
-                                    episodes.filter { !it.isCached }.forEach { episode ->
-                                        allEpisodesToDownload.add(episode)
-                                    }
-                                },
-                                onFailure = { 
-                                    // 某个季失败时跳过，继续处理其他季
-                                }
-                            )
-                        }
-                        
-                        if (allEpisodesToDownload.isNotEmpty()) {
-                            // 3. 批量获取视频流 URL
-                            val episodeIds = allEpisodesToDownload.map { it.id }
-                            val videoUrls = detailRepository.getVideoStreamUrls(episodeIds)
-                            
-                            // 4. 添加到下载队列
-                            DownloadManager.addDownloads(
-                                episodes = allEpisodesToDownload,
-                                seriesName = series.name,
-                                videoUrls = videoUrls
-                            )
-                        }
-                        
-                        // 显示结果提示
-                        _uiState.update { 
-                            it.copy(
-                                isLoading = false,
-                                error = if (allEpisodesToDownload.isNotEmpty()) 
-                                    "已添加 ${allEpisodesToDownload.size} 集到下载队列" 
-                                else 
-                                    "所有剧集已缓存"
-                            )
-                        }
-                    },
-                    onFailure = { e ->
-                        _uiState.update { 
-                            it.copy(isLoading = false, error = "获取剧集失败: ${e.message}")
-                        }
-                    }
-                )
-            } catch (e: Exception) {
-                _uiState.update { 
-                    it.copy(isLoading = false, error = "操作失败: ${e.message}")
+                // 1. 收集所有未缓存的剧集
+                val episodesToDownload = collectUncachedEpisodes(series.id)
+                
+                // 2. 添加到下载队列
+                if (episodesToDownload.isNotEmpty()) {
+                    addEpisodesToDownloadQueue(episodesToDownload, series.name)
                 }
+                
+                // 3. 显示结果
+                showCacheAllSuccess(episodesToDownload.size)
+            } catch (e: Exception) {
+                showErrorWithLoading("操作失败: ${e.message}")
             }
+        }
+    }
+    
+    /**
+     * 收集剧集中所有未缓存的剧集
+     * 
+     * 遍历剧集的所有季，收集未缓存的剧集列表
+     * 
+     * @param seriesId 剧集 ID
+     * @return 未缓存的剧集列表
+     * @throws Exception 获取剧集失败时抛出异常
+     */
+    private suspend fun collectUncachedEpisodes(seriesId: String): List<EpisodeLocalData> {
+        // 1. 获取该剧集的所有季
+        val seasonsResult = detailRepository.refreshSeasons(seriesId)
+        val seasons = seasonsResult.getOrElse { error ->
+            throw Exception("获取剧集失败: ${error.message}")
+        }
+        
+        // 2. 遍历每个季，收集未缓存的剧集
+        val uncachedEpisodes = mutableListOf<EpisodeLocalData>()
+        seasons.forEach { season ->
+            val episodes = getSeasonEpisodes(seriesId, season.id)
+            // 筛选出未缓存的剧集并添加到列表
+            uncachedEpisodes.addAll(episodes.filter { !it.isCached })
+        }
+        
+        return uncachedEpisodes
+    }
+    
+    /**
+     * 获取某一季的剧集列表
+     * 
+     * @param seriesId 剧集 ID
+     * @param seasonId 季 ID
+     * @return 该季的剧集列表，失败时返回空列表（不中断整体流程）
+     */
+    private suspend fun getSeasonEpisodes(seriesId: String, seasonId: String): List<EpisodeLocalData> {
+        val episodesResult = detailRepository.refreshEpisodes(seriesId, seasonId)
+        // 某个季失败时返回空列表，继续处理其他季
+        return episodesResult.getOrElse { emptyList() }
+    }
+    
+    /**
+     * 添加剧集到下载队列
+     * 
+     * 批量获取视频流 URL，并将剧集添加到 DownloadManager
+     * 
+     * @param episodes 要下载的剧集列表
+     * @param seriesName 剧集名称（用于显示）
+     */
+    private suspend fun addEpisodesToDownloadQueue(
+        episodes: List<EpisodeLocalData>,
+        seriesName: String
+    ) {
+        // 1. 批量获取视频流 URL
+        val episodeIds = episodes.map { it.id }
+        val videoUrls = detailRepository.getVideoStreamUrls(episodeIds)
+        
+        // 2. 添加到下载队列
+        DownloadManager.addDownloads(
+            episodes = episodes,
+            seriesName = seriesName,
+            videoUrls = videoUrls
+        )
+    }
+    
+    /**
+     * 显示缓存全部的成功结果
+     * 
+     * @param count 添加到下载队列的剧集数量，0 表示所有剧集已缓存
+     */
+    private fun showCacheAllSuccess(count: Int) {
+        val message = if (count > 0) {
+            "已添加 $count 集到下载队列"
+        } else {
+            "所有剧集已缓存"
+        }
+        _uiState.update { 
+            it.copy(isLoading = false, error = message)
+        }
+    }
+    
+    /**
+     * 设置加载状态
+     * 
+     * @param loading true 显示加载中，false 隐藏加载
+     */
+    private fun setLoading(loading: Boolean) {
+        _uiState.update { it.copy(isLoading = loading) }
+    }
+    
+    /**
+     * 显示错误消息并关闭加载状态
+     * 
+     * @param message 错误消息内容
+     */
+    private fun showErrorWithLoading(message: String) {
+        _uiState.update { 
+            it.copy(isLoading = false, error = message)
         }
     }
     
