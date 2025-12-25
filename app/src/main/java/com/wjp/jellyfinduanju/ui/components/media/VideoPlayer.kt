@@ -238,23 +238,26 @@ fun VideoPlayer(
 }
 
 /**
- * 创建并记住 ExoPlayer 实例
+ * 创建并记住 ExoPlayer 实例，整个播放页面共享一个播放器避免重复创建
  * 
- * 在 PlayerScreen 层级调用，确保整个播放页面只有一个 ExoPlayer 实例
+ * @return 已配置的 ExoPlayer 实例
  */
 @OptIn(UnstableApi::class)
 @Composable
 fun rememberExoPlayer(): ExoPlayer {
     val context = LocalContext.current
     
+    // 使用 remember 缓存播放器实例，避免重组时重复创建
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
+            // 视频缩放模式：适应屏幕保持宽高比
             videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+            // 关闭循环播放
             repeatMode = Player.REPEAT_MODE_OFF
         }
     }
     
-    // 在组件销毁时释放播放器
+    // 组件销毁时释放播放器资源，防止内存泄漏
     DisposableEffect(Unit) {
         onDispose {
             exoPlayer.release()

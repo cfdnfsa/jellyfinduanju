@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
@@ -114,4 +115,14 @@ private fun GradientPlaceholder(
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)  // 半透明
         )
     }
+}
+
+@Preview
+@Composable
+private fun CachedAsyncImagePreview() {
+    CachedAsyncImage(
+        imageUrl = null,  // 显示占位图
+        contentDescription = "预览",
+        modifier = Modifier.size(200.dp, 300.dp)
+    )
 }

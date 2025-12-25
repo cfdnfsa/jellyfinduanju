@@ -14,6 +14,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -23,6 +24,7 @@ import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 /**
@@ -171,4 +173,14 @@ private fun SearchTrailingIcon(
             )
         }
     }
+}
+
+@Preview
+@Composable
+private fun SearchableTopBarPreview() {
+        SearchableTopBar(
+            searchQuery = "示例搜索",
+            onSearchQueryChange = {},
+            onClearSearch = {}
+        )
 }

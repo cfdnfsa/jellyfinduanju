@@ -7,17 +7,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.wjp.jellyfinduanju.data.ui.SortOption
 
@@ -150,5 +153,17 @@ private fun MenuTrailingRadioButton(isSelected: Boolean) {  // 是否选中
         colors = RadioButtonDefaults.colors(
             selectedColor = MaterialTheme.colorScheme.primary  // 选中时的颜色（主题色）
         )
+    )
+}
+
+@Preview
+@Composable
+private fun SortMenuItemPreview() {
+    SortMenuItem(
+        label = "按名称",
+        icon = Icons.Default.SortByAlpha,
+        isSelected = true,
+        sortAscending = true,
+        onClick = {}
     )
 }

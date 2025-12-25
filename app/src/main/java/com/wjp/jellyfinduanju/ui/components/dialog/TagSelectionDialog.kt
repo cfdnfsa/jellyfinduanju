@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.settings.AppSettings
@@ -263,4 +264,14 @@ private fun SystemTagRow(
             color = color
         )
     }
+}
+
+@Preview
+@Composable
+private fun SystemTagRowPreview() {
+    SystemTagRow(
+        icon = Icons.Default.Download,
+        text = "已缓存",
+        color = Color.Green
+    )
 }

@@ -6,6 +6,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.tooling.preview.Preview
 
 /**
  * DialogConfig - 确认对话框配置数据类
@@ -91,4 +92,10 @@ fun ConfirmDialog(
             }
         }
     )
+}
+
+@Preview
+@Composable
+private fun ConfirmDialogPreview() {
+    ConfirmDialog(DialogConfig("删除剧集", "确定要删除吗？", onConfirm = {}), {})
 }
