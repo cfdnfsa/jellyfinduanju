@@ -48,7 +48,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -74,15 +73,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.ExoPlayer
+import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
+import com.wjp.jellyfinduanju.data.settings.AppSettings
 import com.wjp.jellyfinduanju.ui.components.media.rememberExoPlayer
+import com.wjp.jellyfinduanju.ui.components.media.VideoPlayer
+import com.wjp.jellyfinduanju.ui.components.player.BufferingIndicator
 import com.wjp.jellyfinduanju.ui.components.player.DragProgressIndicator
+import com.wjp.jellyfinduanju.ui.components.player.EpisodePlaceholder
 import com.wjp.jellyfinduanju.ui.components.player.GradientOverlay
 import com.wjp.jellyfinduanju.ui.components.player.GradientPosition
 import com.wjp.jellyfinduanju.ui.components.player.PlayerGestureCallbacks
 import com.wjp.jellyfinduanju.ui.components.player.PlayerGestureState
 import com.wjp.jellyfinduanju.ui.components.player.SpeedIndicator
-import com.wjp.jellyfinduanju.ui.components.player.VideoContentArea
-import com.wjp.jellyfinduanju.ui.components.player.VideoPlayerCallbacks
+import com.wjp.jellyfinduanju.ui.components.player.VideoErrorView
+import com.wjp.jellyfinduanju.ui.components.player.VideoLoadingView
 import com.wjp.jellyfinduanju.ui.components.player.VideoProgressBar
 import com.wjp.jellyfinduanju.ui.components.player.playerGestures
 
@@ -203,6 +207,52 @@ private fun BoxScope.LoadingContent() {
 }
 
 /**
+ * 同步 Pager 与 ViewModel 状态（双向绑定）
+ * 
+ * 实现两个方向的同步：
+ * - Pager → ViewModel：用户滑动时保存进度并切换集数
+ * - ViewModel → Pager：点击选集时驱动 Pager 滚动
+ * 
+ * 内部使用 isProgrammaticScroll 标记防止循环触发
+ */
+@Composable
+private fun SyncPagerWithViewModel(
+    pagerState: PagerState,
+    uiState: PlayerUiState,
+    viewModel: PlayerViewModel
+) {
+    // 标记是否为程序主动滚动（防止循环触发）  不加视频会一直加载
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
+    
+    // Pager → ViewModel：监听用户滑动
+    LaunchedEffect(pagerState) {
+        // 监听 Pager 的最终停止页（滑动完成后的页码）
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            // 仅当【用户手动滑动】且【页码确实变化】时才触发
+            if (!isProgrammaticScroll && page != uiState.currentEpisodeIndex) {
+                // 保存当前集的播放进度
+                viewModel.forceSaveProgress()
+                // 切换到新集数（加载新视频）
+                viewModel.switchToEpisode(page)
+            }
+        }
+    }
+    
+    // ViewModel → Pager：监听选集切换
+    LaunchedEffect(uiState.currentEpisodeIndex) {
+        // 当 ViewModel 的集数与 Pager 当前页不一致时（如点击选集）
+        if (pagerState.currentPage != uiState.currentEpisodeIndex) {
+            // 标记为程序主动滚动（避免触发上面的 Pager → ViewModel 逻辑）
+            isProgrammaticScroll = true
+            // 滚动到目标集数
+            pagerState.animateScrollToPage(uiState.currentEpisodeIndex)
+            // 恢复标记
+            isProgrammaticScroll = false
+        }
+    }
+}
+
+/**
  * PlayerPagerContent - 播放器主内容（VerticalPager）
  */
 @SuppressLint("SourceLockedOrientationActivity")
@@ -214,233 +264,418 @@ private fun PlayerPagerContent(
     viewModel: PlayerViewModel,
     onBack: () -> Unit
 ) {
-    val activity = LocalContext.current as? Activity
-    
-    // VerticalPager 状态（抖音式上下滑动切换集数）
+    // 管理当前页码、滚动位置、动画状态等
     val pagerState = rememberPagerState(
+        // 当前播放的集数开始
         initialPage = uiState.currentEpisodeIndex,
+        // 总集数
         pageCount = { uiState.allEpisodes.size }
     )
     
-    // 同步 Pager 与 ViewModel 状态
-    var isProgrammaticScroll by remember { mutableStateOf(false) }
+    // 同步 Pager 与 ViewModel 状态（双向绑定）
+    SyncPagerWithViewModel(pagerState, uiState, viewModel)
     
-    // Pager → ViewModel：监听滑动变化
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }.collect { page ->
-            if (!isProgrammaticScroll && page != uiState.currentEpisodeIndex) {
-                viewModel.forceSaveProgress()
-                viewModel.switchToEpisode(page)
-            }
-        }
-    }
-    
-    // ViewModel → Pager：监听集数切换
-    LaunchedEffect(uiState.currentEpisodeIndex) {
-        if (pagerState.currentPage != uiState.currentEpisodeIndex) {
-            isProgrammaticScroll = true
-            pagerState.animateScrollToPage(uiState.currentEpisodeIndex)
-            isProgrammaticScroll = false
-        }
-    }
-    
-    // 创建全屏切换回调（内部逻辑）
-    val toggleFullscreen: () -> Unit = {
-        if (uiState.isFullscreen) {
-            // 横屏 → 竖屏
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            viewModel.setFullscreen(false)
-        } else {
-            // 竖屏 → 横屏
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            viewModel.setFullscreen(true)
-        }
-    }
-    
+    // ==================== VerticalPager：抖音式上下滑动 ====================
+    // 实现类似抖音的垂直滑动切换剧集效果
     VerticalPager(
+        // 状态管理：页码、滚动位置
         state = pagerState,
+        // 全屏显示
         modifier = Modifier.fillMaxSize(),
+        // 预加载策略：0 表示不预加载相邻页（优化内存）
         beyondViewportPageCount = 0,
+        // 滑动行为：自定义滑动阈值，控制切换灵敏度
         flingBehavior = PagerDefaults.flingBehavior(
             state = pagerState,
-            snapPositionalThreshold = com.wjp.jellyfinduanju.data.settings.AppSettings.swipeThreshold
+            // 滑动阈值：滑动超过此比例才切换页面
+            snapPositionalThreshold = AppSettings.swipeThreshold
         )
     ) { page ->
-        val isCurrentPage = page == pagerState.currentPage
+        // page: 当前页索引（0, 1, 2...）对应剧集索引
+        // 根据横竖屏渲染不同布局
+        if (uiState.isFullscreen) {
+            LandscapePlayerLayout(
+                page = page,                        // 当前页索引
+                uiState = uiState,                  // 播放器 UI 状态
+                exoPlayer = exoPlayer,              // 共享的播放器实例
+                viewModel = viewModel,              // 播放器 ViewModel
+                showControls = showControls,        // 控制栏显示状态（横屏使用）
+                onBack = onBack                     // 返回回调
+            )
+        } else {
+            PortraitPlayerLayout(
+                page = page,                        // 当前页索引
+                uiState = uiState,                  // 播放器 UI 状态
+                exoPlayer = exoPlayer,              // 共享的播放器实例
+                viewModel = viewModel,              // 播放器 ViewModel
+                onBack = onBack                     // 返回回调
+            )
+        }
+    }
+}
 
-        PlayerContent(
-            exoPlayer = exoPlayer,
-            uiState = uiState,
-            episode = uiState.allEpisodes[page],
-            isCurrentPage = isCurrentPage,
-            showControls = showControls.value && isCurrentPage,
-            showPlayButton = false,
-            onToggleControls = {
-                if (uiState.isFullscreen) {
-                    showControls.value = !showControls.value
-                } else {
-                    viewModel.togglePlayPause()
-                }
-            },
-            onTogglePlayPause = { viewModel.togglePlayPause() },
-            onSeek = { viewModel.seekTo(it) },
-            onSeekStart = { viewModel.onSeekStart() },
-            onSeekEnd = { targetPos -> viewModel.onSeekEnd(targetPos) },
-            onBack = {
-                if (uiState.isFullscreen) {
-                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                    viewModel.setFullscreen(false)
-                } else {
-                    viewModel.forceSaveProgress(mustSave = true)
-                    onBack()
-                }
-            },
-            onShowSpeedSelector = { viewModel.showSpeedSelector() },
-            onShowEpisodeSelector = { viewModel.showEpisodeSelector() },
-            onToggleFullscreen = toggleFullscreen,
+/**
+ * 创建控制栏切换回调
+ */
+private fun createOnToggleControls(
+    uiState: PlayerUiState,
+    showControls: MutableState<Boolean>,
+    viewModel: PlayerViewModel
+): () -> Unit = {
+    if (uiState.isFullscreen) {
+        // 横屏：切换控制栏
+        showControls.value = !showControls.value
+    } else {
+        // 竖屏：点击播放/暂停
+        viewModel.togglePlayPause()
+    }
+}
+
+/**
+ * 创建返回按钮回调
+ */
+@SuppressLint("SourceLockedOrientationActivity")
+private fun createOnBackPress(
+    uiState: PlayerUiState,
+    activity: Activity?,
+    viewModel: PlayerViewModel,
+    onBack: () -> Unit
+): () -> Unit = {
+    if (uiState.isFullscreen) {
+        // 横屏：切换到竖屏
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        viewModel.setFullscreen(false)
+    } else {
+        // 竖屏：退出播放器
+        viewModel.forceSaveProgress(mustSave = true)
+        onBack()
+    }
+}
+
+/**
+ * 创建横竖屏切换回调
+ */
+@SuppressLint("SourceLockedOrientationActivity")
+private fun createOnToggleFullscreen(
+    uiState: PlayerUiState,
+    activity: Activity?,
+    viewModel: PlayerViewModel
+): () -> Unit = {
+    if (uiState.isFullscreen) {
+        // 切换到竖屏
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        viewModel.setFullscreen(false)
+    } else {
+        // 切换到横屏
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        viewModel.setFullscreen(true)
+    }
+}
+
+/**
+ * VideoContent - 视频渲染区域
+ *
+ * 负责根据不同状态渲染视频内容，使用早返回模式保持代码扁平化。
+ * 
+ * 渲染优先级（从上到下）：
+ * 1. 加载中 → VideoLoadingView（早返回）
+ * 2. 错误 → VideoErrorView（早返回）
+ * 3. 无视频 → 不渲染（早返回）
+ * 4. 有视频 → VideoPlayer + BufferingIndicator
+ * 
+ * @param episode 当前剧集数据（用于 key，确保切换集数时重新创建播放器）
+ * @param uiState 播放器 UI 状态（包含视频 URI、播放状态、缓冲状态等）
+ * @param exoPlayer 共享的 ExoPlayer 实例
+ * @param viewModel 播放器 ViewModel（处理播放器事件）
+ * 
+ * 注意：
+ * - 此函数只在当前页调用，调用方需确保 isCurrentPage = true
+ * - 使用 episode.id 作为 key，切换集数时会重新创建 VideoPlayer
+ */
+@Composable
+private fun VideoContent(
+    episode: EpisodeLocalData,
+    uiState: PlayerUiState,
+    exoPlayer: ExoPlayer,
+    viewModel: PlayerViewModel
+) {
+    // ==================== 异常状态处理（早返回） ====================
+    
+    // 视频源加载中：显示加载动画
+    if (uiState.isVideoLoading) {
+        VideoLoadingView()
+        return
+    }
+    
+    // 视频加载错误：显示错误信息 + 重试按钮
+    if (uiState.videoError != null) {
+        VideoErrorView(
+            errorMessage = uiState.videoError,
+            onRetry = { viewModel.retryLoadVideo() }
+        )
+        return
+    }
+    
+    // 无视频 URI：异常状态，不渲染任何内容
+    if (uiState.currentVideoUri == null) return
+    
+    // ==================== 正常渲染：视频播放器 ====================
+    
+    // 使用 episode.id 作为 key，确保切换集数时重新创建 VideoPlayer
+    // TODO 不应该传递参数 应该用set等方式插槽式
+    key(episode.id) {
+        VideoPlayer(
+            exoPlayer = exoPlayer,                      // 共享的播放器实例
+            videoUri = uiState.currentVideoUri,         // 视频 URI
+            isPlaying = uiState.isPlaying,              // 播放/暂停状态
+            playbackSpeed = uiState.actualSpeed,        // 播放速度（正常/长按加速）
+            seekToPosition = uiState.seekToPosition,    // 跳转目标位置
+            isFullscreen = uiState.isFullscreen,        // 横竖屏状态
+            
+            // 进度变化回调：更新播放进度
             onProgressChanged = { current, duration ->
-                if (isCurrentPage) {
-                    viewModel.updateProgress(current, duration)
-                }
+                viewModel.updateProgress(current, duration)
             },
+            
+            // 播放状态变化回调：处理播放/暂停切换
             onPlaybackStateChanged = { isPlaying ->
-                val state = viewModel.uiState.value
-                if (isCurrentPage) {
-                    if (state.isChangingEpisode) {
-                        if (isPlaying) {
-                            viewModel.onVideoActuallyStarted()
-                        }
-                    } else if (!state.isSeeking) {
-                        viewModel.setPlaying(isPlaying)
+                if (uiState.isChangingEpisode) {
+                    // 切换集数中：只在开始播放时标记切换完成
+                    if (isPlaying) {
+                        viewModel.onVideoActuallyStarted()
                     }
+                } else if (!uiState.isSeeking) {
+                    // 正常播放：更新播放状态（跳转中不更新）
+                    viewModel.setPlaying(isPlaying)
                 }
             },
+            
+            // 跳转完成回调：清除跳转目标位置
             onSeekComplete = { viewModel.clearSeekPosition() },
+            
+            // 缓冲状态变化回调：更新缓冲状态
             onBufferingChanged = { buffering ->
-                if (isCurrentPage) {
-                    viewModel.setBuffering(buffering)
-                }
+                viewModel.setBuffering(buffering)
             },
+            
+            // 视频结束回调：触发下一集或重播逻辑
             onVideoEnded = {
-                if (page == pagerState.currentPage) {
-                    viewModel.onVideoEnded()
-                }
+                viewModel.onVideoEnded()
             },
-            onRetry = { viewModel.retryLoadVideo() },
-            onLongPressStart = { viewModel.startLongPressSpeed() },
-            onLongPressEnd = { viewModel.endLongPressSpeed() }
+            
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+    
+    // 缓冲指示器：视频缓冲时显示加载动画
+    BufferingIndicator(visible = uiState.isBuffering)
+}
+
+/**
+ * LandscapePlayerLayout - 横屏播放布局
+ *
+ * 横屏模式的完整布局，包含：
+ * - 悬浮控制栏（沉浸式体验）
+ * - 手势控制（点击、长按、拖动）
+ * - 控制层显示/隐藏切换
+ */
+@Composable
+private fun LandscapePlayerLayout(
+    page: Int,
+    uiState: PlayerUiState,
+    exoPlayer: ExoPlayer,
+    viewModel: PlayerViewModel,
+    showControls: MutableState<Boolean>,
+    onBack: () -> Unit
+) {
+
+    val episode = uiState.allEpisodes[page]
+    val isCurrentPage = page == uiState.currentEpisodeIndex
+    val activity = LocalContext.current as? Activity
+    var gestureState by remember { mutableStateOf(PlayerGestureState(false, 0L)) }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .playerGestures(
+                currentPosition = uiState.currentPosition,
+                duration = uiState.duration,
+                callbacks = PlayerGestureCallbacks(
+                    onTap = createOnToggleControls(uiState, showControls, viewModel),
+                    onLongPressStart = { viewModel.startLongPressSpeed() },
+                    onLongPressEnd = { viewModel.endLongPressSpeed() },
+                    onSeekStart = { viewModel.onSeekStart() },
+                    onSeekEnd = { targetPos -> viewModel.onSeekEnd(targetPos) }
+                ),
+                onGestureStateChanged = { gestureState = it }
+            )
+    ) {
+        // 视频渲染区域
+        if (isCurrentPage) {
+            VideoContent(
+                episode = episode,
+                uiState = uiState,
+                exoPlayer = exoPlayer,
+                viewModel = viewModel
+            )
+        } else {
+            // 非当前页：显示剧集占位符
+            EpisodePlaceholder(
+                episodeNumber = episode.episodeNumber,
+                episodeName = episode.name
+            )
+        }
+
+        // ==================== 滑动进度指示器 ====================
+
+        DragProgressIndicator(
+            targetPosition = gestureState.dragTargetPosition,
+            duration = uiState.duration,
+            visible = gestureState.isDragging,
+            formatDuration = { PlayerUiState.formatDuration(it) },
+            modifier = Modifier.align(Alignment.Center)
+        )
+
+        // ==================== 控制层 ====================
+
+        // 横屏模式：受 showControls.value 控制显示/隐藏
+        if (showControls.value) {
+            // 顶部渐变遮罩
+            GradientOverlay(
+                position = GradientPosition.TOP,
+                height = 100.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopStart)
+            )
+
+            // 顶部控制栏
+            PlayerTopBar(
+                seriesName = uiState.series.name,
+                episodeTitle = "第${episode.episodeNumber}集",
+                playbackSpeed = uiState.playbackSpeed,
+                isFullscreen = uiState.isFullscreen,
+                onBack = createOnBackPress(uiState, activity, viewModel, onBack),
+                onSpeedClick = { viewModel.showSpeedSelector() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopStart)
+            )
+
+            // 底部渐变遮罩
+            GradientOverlay(
+                position = GradientPosition.BOTTOM,
+                height = 120.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+            )
+
+            // 底部控制栏
+            PlayerBottomBar(
+                currentPosition = uiState.currentPosition,
+                duration = uiState.duration,
+                currentPositionText = uiState.currentPositionText,
+                durationText = uiState.durationText,
+                episodeCount = uiState.allEpisodes.size,
+                isFullscreen = uiState.isFullscreen,
+                onSeek = { viewModel.seekTo(it) },
+                onSeekStart = { viewModel.onSeekStart() },
+                onSeekEnd = { targetPos -> viewModel.onSeekEnd(targetPos) },
+                onShowEpisodeSelector = { viewModel.showEpisodeSelector() },
+                onToggleFullscreen = createOnToggleFullscreen(uiState, activity, viewModel),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+
+            // 中央播放/暂停按钮
+            Icon(
+                imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (uiState.isPlaying) "暂停" else "播放",
+                tint = Color.White.copy(alpha = 0.9f),  // 稍微透明
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(64.dp)  // 圆润的大图标
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,  // 去掉点击波纹效果
+                        onClick = { viewModel.togglePlayPause() }
+                    )
+            )
+        }
+
+        // ==================== 长按倍速提示（始终显示，不受控制栏影响） ====================
+        SpeedIndicator(
+            speed = uiState.longPressSpeedValue,
+            visible = uiState.isLongPressSpeed,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 60.dp, end = 16.dp)
         )
     }
 }
 
 /**
+ * PortraitPlayerLayout - 竖屏播放布局
  * ============================================================================
- * PlayerContent - 播放内容区域
- * ============================================================================
- *
- * VerticalPager 的每一页内容，包含：
- * - VideoPlayer（视频播放器）
- * - 控制层（顶部栏、底部栏、中央播放按钮）
- * - 手势处理（点击、长按、水平滑动）
- *
- * 【手势处理】
- * - detectTapGestures: 处理点击和长按
- * - detectHorizontalDragGestures: 处理水平滑动调节进度
- *
- * @param exoPlayer 共享的 ExoPlayer 实例
- * @param uiState 播放器 UI 状态
- * @param episode 当前页面对应的剧集数据
- * @param isCurrentPage 是否为当前显示的页面（用于决定是否播放）
- * @param showControls 是否显示控制栏（横屏模式使用）
- * @param showPlayButton 是否显示播放按钮（竖屏模式只控制播放按钮）
- * @param onToggleControls 切换控制栏/播放按钮显示
- * @param onTogglePlayPause 切换播放/暂停
- * @param onSeek 跳转到指定位置
- * @param onSeekStart 开始拖动（暂停播放）
- * @param onSeekEnd 结束拖动（恢复播放，可选跳转）
- * @param onBack 返回
- * @param onShowSpeedSelector 显示倍速选择弹窗
- * @param onShowEpisodeSelector 显示选集弹窗
- * @param onToggleFullscreen 切换全屏
- * @param onProgressChanged 播放进度变化回调
- * @param onPlaybackStateChanged 播放状态变化回调
- * @param onSeekComplete seek 完成回调
- * @param onBufferingChanged 缓冲状态变化回调
- * @param onVideoEnded 视频播放完成回调
- * @param onRetry 重试加载回调
- * @param onLongPressStart 长按开始回调（开始 3x 倍速）
- * @param onLongPressEnd 长按结束回调（恢复正常倍速）
+ * 
+ * 竖屏模式的完整布局，包含：
+ * - 固定底部控制区（抖音风格）
+ * - 手势控制（点击、长按、拖动）
+ * - 视频区域 + 底部控制区分离
  */
 @Composable
-private fun PlayerContent(
-    exoPlayer: ExoPlayer,
+private fun PortraitPlayerLayout(
+    page: Int,
     uiState: PlayerUiState,
-    episode: com.wjp.jellyfinduanju.data.model.EpisodeLocalData,
-    isCurrentPage: Boolean,
-    showControls: Boolean,
-    showPlayButton: Boolean,
-    onToggleControls: () -> Unit,
-    onTogglePlayPause: () -> Unit,
-    onSeek: (Long) -> Unit,
-    onSeekStart: () -> Unit,
-    onSeekEnd: (Long?) -> Unit,
-    onBack: () -> Unit,
-    onShowSpeedSelector: () -> Unit,
-    onShowEpisodeSelector: () -> Unit,
-    onToggleFullscreen: () -> Unit,
-    onProgressChanged: (Long, Long) -> Unit,
-    onPlaybackStateChanged: (Boolean) -> Unit,
-    onSeekComplete: () -> Unit,
-    onBufferingChanged: (Boolean) -> Unit = {},
-    onVideoEnded: () -> Unit = {},
-    onRetry: () -> Unit = {},
-    onLongPressStart: () -> Unit = {},
-    onLongPressEnd: () -> Unit = {}
+    exoPlayer: ExoPlayer,
+    viewModel: PlayerViewModel,
+    onBack: () -> Unit
 ) {
-    // ==================== 本地状态 ====================
-
-    /** 手势状态（拖动状态和目标位置） */
+    // 推导数据
+    val episode = uiState.allEpisodes[page]
+    val isCurrentPage = page == uiState.currentEpisodeIndex
+    val activity = LocalContext.current as? Activity
     var gestureState by remember { mutableStateOf(PlayerGestureState(false, 0L)) }
-
-    // ==================== 手势处理 + 布局（竖屏/横屏不同布局） ====================
-
-    if (uiState.isFullscreen) {
-        // ==================== 横屏模式：悬浮控制栏（沉浸式） ====================
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .playerGestures(
+                currentPosition = uiState.currentPosition,
+                duration = uiState.duration,
+                callbacks = PlayerGestureCallbacks(
+                    onTap = { viewModel.togglePlayPause() },  // 竖屏：点击播放/暂停
+                    onLongPressStart = { viewModel.startLongPressSpeed() },
+                    onLongPressEnd = { viewModel.endLongPressSpeed() },
+                    onSeekStart = { viewModel.onSeekStart() },
+                    onSeekEnd = { targetPos -> viewModel.onSeekEnd(targetPos) }
+                ),
+                onGestureStateChanged = { gestureState = it }
+            )
+    ) {
+        // ==================== 视频区域（带顶部控制栏） ====================
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .playerGestures(
-                    currentPosition = uiState.currentPosition,
-                    duration = uiState.duration,
-                    callbacks = PlayerGestureCallbacks(
-                        onTap = onToggleControls,
-                        onLongPressStart = onLongPressStart,
-                        onLongPressEnd = onLongPressEnd,
-                        onSeekStart = onSeekStart,
-                        onSeekEnd = onSeekEnd
-                    ),
-                    onGestureStateChanged = { gestureState = it }
-                )
+                .fillMaxWidth()
+                .weight(1f)  // 占据剩余空间
         ) {
-            // ==================== 视频内容 ====================
-            
-            VideoContentArea(
-                isCurrentPage = isCurrentPage,
-                episode = episode,
-                uiState = uiState,
-                exoPlayer = exoPlayer,
-                callbacks = VideoPlayerCallbacks(
-                    onProgressChanged = onProgressChanged,
-                    onPlaybackStateChanged = onPlaybackStateChanged,
-                    onSeekComplete = onSeekComplete,
-                    onBufferingChanged = onBufferingChanged,
-                    onVideoEnded = onVideoEnded,
-                    onRetry = onRetry
+            // 视频渲染区域
+            if (isCurrentPage) {
+                VideoContent(
+                    episode = episode,
+                    uiState = uiState,
+                    exoPlayer = exoPlayer,
+                    viewModel = viewModel
                 )
-            )
+            } else {
+                // 非当前页：显示剧集占位符
+                EpisodePlaceholder(
+                    episodeNumber = episode.episodeNumber,
+                    episodeName = episode.name
+                )
+            }
 
-            // ==================== 滑动进度指示器 ====================
-
+            // 水平滑动进度指示器
             DragProgressIndicator(
                 targetPosition = gestureState.dragTargetPosition,
                 duration = uiState.duration,
@@ -449,80 +684,29 @@ private fun PlayerContent(
                 modifier = Modifier.align(Alignment.Center)
             )
 
-            // ==================== 控制层 ====================
+            // 顶部渐变遮罩
+            GradientOverlay(
+                position = GradientPosition.TOP,
+                height = 100.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopStart)
+            )
 
-            // 顶部和底部控制栏的显示逻辑：
-            // - 竖屏模式：始终显示
-            // - 横屏模式：受 showControls 控制
-            val showBars = !uiState.isFullscreen || showControls
+            // 顶部控制栏
+            PlayerTopBar(
+                seriesName = uiState.series.name,
+                episodeTitle = "第${episode.episodeNumber}集",
+                playbackSpeed = uiState.playbackSpeed,
+                isFullscreen = uiState.isFullscreen,
+                onBack = createOnBackPress(uiState, activity, viewModel, onBack),
+                onSpeedClick = { viewModel.showSpeedSelector() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopStart)
+            )
 
-            if (showBars) {
-                // 顶部渐变遮罩
-                GradientOverlay(
-                    position = GradientPosition.TOP,
-                    height = 100.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopStart)
-                )
-
-                // 顶部控制栏
-                PlayerTopBar(
-                    seriesName = uiState.series.name,
-                    episodeTitle = "第${episode.episodeNumber}集",
-                    playbackSpeed = uiState.playbackSpeed,
-                    isFullscreen = uiState.isFullscreen,
-                    onBack = onBack,
-                    onSpeedClick = onShowSpeedSelector,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopStart)
-                )
-
-                // 底部渐变遮罩
-                GradientOverlay(
-                    position = GradientPosition.BOTTOM,
-                    height = 120.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                )
-
-                // 底部控制栏
-                PlayerBottomBar(
-                    currentPosition = uiState.currentPosition,
-                    duration = uiState.duration,
-                    currentPositionText = uiState.currentPositionText,
-                    durationText = uiState.durationText,
-                    episodeCount = uiState.allEpisodes.size,
-                    isFullscreen = uiState.isFullscreen,
-                    onSeek = onSeek,
-                    onSeekStart = onSeekStart,
-                    onSeekEnd = onSeekEnd,
-                    onShowEpisodeSelector = onShowEpisodeSelector,
-                    onToggleFullscreen = onToggleFullscreen,
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
-            }
-
-            // 中央播放/暂停按钮：横屏模式，受 showControls 控制
-            if (uiState.isFullscreen && showControls) {
-                Icon(
-                    imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (uiState.isPlaying) "暂停" else "播放",
-                    tint = Color.White.copy(alpha = 0.9f),  // 稍微透明
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(64.dp)  // 圆润的大图标
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,  // 去掉点击波纹效果
-                            onClick = onTogglePlayPause
-                        )
-                )
-            }
-
-            // ==================== 长按倍速提示（始终显示，不受控制栏影响） ====================
+            // 长按倍速提示
             SpeedIndicator(
                 speed = uiState.longPressSpeedValue,
                 visible = uiState.isLongPressSpeed,
@@ -530,121 +714,40 @@ private fun PlayerContent(
                     .align(Alignment.TopEnd)
                     .padding(top = 60.dp, end = 16.dp)
             )
-        }
-    } else {
-        // ==================== 竖屏模式：固定底部控制区（抖音风格） ====================
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .playerGestures(
-                    currentPosition = uiState.currentPosition,
-                    duration = uiState.duration,
-                    callbacks = PlayerGestureCallbacks(
-                        onTap = onToggleControls,
-                        onLongPressStart = onLongPressStart,
-                        onLongPressEnd = onLongPressEnd,
-                        onSeekStart = onSeekStart,
-                        onSeekEnd = onSeekEnd
-                    ),
-                    onGestureStateChanged = { gestureState = it }
-                )
-        ) {
-            // ==================== 视频区域（带顶部控制栏） ====================
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)  // 占据剩余空间
-            ) {
-                // 视频内容
-                VideoContentArea(
-                    isCurrentPage = isCurrentPage,
-                    episode = episode,
-                    uiState = uiState,
-                    exoPlayer = exoPlayer,
-                    callbacks = VideoPlayerCallbacks(
-                        onProgressChanged = onProgressChanged,
-                        onPlaybackStateChanged = onPlaybackStateChanged,
-                        onSeekComplete = onSeekComplete,
-                        onBufferingChanged = onBufferingChanged,
-                        onVideoEnded = onVideoEnded,
-                        onRetry = onRetry
-                    )
-                )
 
-                // 水平滑动进度指示器
-                DragProgressIndicator(
-                    targetPosition = gestureState.dragTargetPosition,
-                    duration = uiState.duration,
-                    visible = gestureState.isDragging,
-                    formatDuration = { PlayerUiState.formatDuration(it) },
-                    modifier = Modifier.align(Alignment.Center)
-                )
-
-                // 顶部渐变遮罩
-                GradientOverlay(
-                    position = GradientPosition.TOP,
-                    height = 100.dp,
+            // 中央播放按钮：竖屏模式，仅在暂停时显示
+            if (!uiState.isPlaying && isCurrentPage) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "播放",
+                    tint = Color.White.copy(alpha = 0.9f),  // 稍微透明
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopStart)
+                        .align(Alignment.Center)
+                        .size(64.dp)  // 圆润的大图标
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,  // 去掉点击波纹效果
+                            onClick = { viewModel.togglePlayPause() }
+                        )
                 )
-
-                // 顶部控制栏
-                PlayerTopBar(
-                    seriesName = uiState.series.name,
-                    episodeTitle = "第${episode.episodeNumber}集",
-                    playbackSpeed = uiState.playbackSpeed,
-                    isFullscreen = uiState.isFullscreen,
-                    onBack = onBack,
-                    onSpeedClick = onShowSpeedSelector,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopStart)
-                )
-
-                // 长按倍速提示
-                SpeedIndicator(
-                    speed = uiState.longPressSpeedValue,
-                    visible = uiState.isLongPressSpeed,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 60.dp, end = 16.dp)
-                )
-
-                // 中央播放按钮：竖屏模式，仅在暂停时显示
-                if (!uiState.isPlaying && isCurrentPage) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "播放",
-                        tint = Color.White.copy(alpha = 0.9f),  // 稍微透明
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(64.dp)  // 圆润的大图标
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,  // 去掉点击波纹效果
-                                onClick = onTogglePlayPause
-                            )
-                    )
-                }
             }
-
-            // ==================== 底部固定控制区（不透明背景） ====================
-            PlayerBottomBar(
-                currentPosition = uiState.currentPosition,
-                duration = uiState.duration,
-                currentPositionText = uiState.currentPositionText,
-                durationText = uiState.durationText,
-                episodeCount = uiState.allEpisodes.size,
-                isFullscreen = uiState.isFullscreen,
-                onSeek = onSeek,
-                onSeekStart = onSeekStart,
-                onSeekEnd = onSeekEnd,
-                onShowEpisodeSelector = onShowEpisodeSelector,
-                onToggleFullscreen = onToggleFullscreen,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
+
+        // ==================== 底部固定控制区（不透明背景） ====================
+        PlayerBottomBar(
+            currentPosition = uiState.currentPosition,
+            duration = uiState.duration,
+            currentPositionText = uiState.currentPositionText,
+            durationText = uiState.durationText,
+            episodeCount = uiState.allEpisodes.size,
+            isFullscreen = uiState.isFullscreen,
+            onSeek = { viewModel.seekTo(it) },
+            onSeekStart = { viewModel.onSeekStart() },
+            onSeekEnd = { targetPos -> viewModel.onSeekEnd(targetPos) },
+            onShowEpisodeSelector = { viewModel.showEpisodeSelector() },
+            onToggleFullscreen = createOnToggleFullscreen(uiState, activity, viewModel),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -1073,10 +1176,14 @@ private fun SpeedSelectorDialog(
 private fun SetupSystemUI(viewModel: PlayerViewModel) {
     // 获取 Activity 实例（只获取一次，传递给子函数）
     val activity = LocalContext.current as? Activity
-    
+
+    // 设置状态栏样式（白色图标）
     SetupStatusBarStyle(activity)
+    // 根据横竖屏控制系统栏显示隐藏
     SetupSystemBarsVisibility(activity, viewModel)
+    // 控制屏幕常亮
     SetupKeepScreenOn(activity, viewModel)
+    // 清理：退出时恢复系统 UI 状态
     CleanupSystemUI(activity)
 }
 
@@ -1119,9 +1226,9 @@ private fun SetupSystemBarsVisibility(activity: Activity?, viewModel: PlayerView
     LaunchedEffect(uiState.isFullscreen) {
         activity?.window?.let { window ->
             val controller = WindowCompat.getInsetsController(window, window.decorView)
-            
+
+            // 横屏模式：隐藏所有系统栏（状态栏+导航栏）
             if (uiState.isFullscreen) {
-                // 横屏模式：隐藏所有系统栏（状态栏+导航栏）
                 WindowCompat.setDecorFitsSystemWindows(window, false)
                 controller.hide(WindowInsetsCompat.Type.systemBars())
                 // 从边缘滑动可临时唤出系统栏
