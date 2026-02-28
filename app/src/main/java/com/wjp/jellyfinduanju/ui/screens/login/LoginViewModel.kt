@@ -180,6 +180,13 @@ class LoginViewModel @Inject constructor(
     }
     
     /**
+     * 跳过服务器连接，以本地模式进入应用
+     */
+    fun skipLogin() {
+        authRepository.enterLocalMode()
+    }
+    
+    /**
      * 返回服务器输入步骤
      */
     fun backToServerInput() {

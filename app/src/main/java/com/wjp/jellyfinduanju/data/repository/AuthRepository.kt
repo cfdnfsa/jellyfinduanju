@@ -168,6 +168,20 @@ class AuthRepository(
         }
     }
     
+    /**
+     * 跳过服务器连接，以本地模式进入应用
+     * 不需要网络请求，直接创建一个本地模式的 UserSession
+     */
+    fun enterLocalMode() {
+        val localSession = UserSession(
+            userId = "local",
+            username = "本地用户",
+            accessToken = "",
+            serverId = "local"
+        )
+        dataStore.saveUserSession(localSession)
+    }
+    
     // ==================== 登出 ====================
     
     /**

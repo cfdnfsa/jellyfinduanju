@@ -177,22 +177,31 @@ fun LoginScreen(
                 enter = fadeIn() + slideInVertically(), // 进入动画：淡入 + 从上滑入
                 exit = fadeOut() + slideOutVertically() // 退出动画：淡出 + 向上滑出
             ) {
-                // ServerInputCard 组件的参数说明：
-                ServerInputCard(
-                    // 【数据参数】从 ViewModel 获取，用于显示
-                    serverUrl = uiState.serverUrl,      // 输入框显示的服务器地址
-                    isLoading = uiState.isLoading,      // 是否正在加载（显示加载圈）
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    ServerInputCard(
+                        serverUrl = uiState.serverUrl,
+                        isLoading = uiState.isLoading,
+                        onServerUrlChange = viewModel::updateServerUrl,
+                        onValidate = {
+                            focusManager.clearFocus()
+                            viewModel.validateServer()
+                        }
+                    )
                     
-                    // 【回调参数】用户操作时调用，通知 ViewModel
-                    onServerUrlChange = viewModel::updateServerUrl,  // 用户输入时更新地址
-                    // viewModel::updateServerUrl 等价于 { text -> viewModel.updateServerUrl(text) }
+                    Spacer(modifier = Modifier.height(16.dp))
                     
-                    onValidate = {
-                        // 用户点击"连接服务器"按钮时执行
-                        focusManager.clearFocus()       // 1. 隐藏键盘
-                        viewModel.validateServer()      // 2. 验证服务器
+                    TextButton(
+                        onClick = { viewModel.skipLogin() },
+                        enabled = !uiState.isLoading
+                    ) {
+                        Text(
+                            text = "跳过，使用本地模式",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                )
+                }
             }
             
             // 卡片 2：用户名密码输入（已验证服务器时显示）

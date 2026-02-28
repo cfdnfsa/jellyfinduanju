@@ -24,7 +24,7 @@ import kotlinx.serialization.json.Json
  */
 class DownloadDataStore {
     
-    private val mmkv = MMKV.mmkvWithID("download_data")
+    private val mmkv by lazy { MMKV.mmkvWithID("download_data") }
     
     private val json = Json {
         ignoreUnknownKeys = true
@@ -39,8 +39,8 @@ class DownloadDataStore {
     
     // ==================== 响应式数据流 ====================
     
-    private val _tasksFlow = MutableStateFlow(loadAllTasks())
-    val tasksFlow: Flow<List<DownloadTask>> = _tasksFlow
+    private val _tasksFlow by lazy { MutableStateFlow(loadAllTasks()) }
+    val tasksFlow: Flow<List<DownloadTask>> get() = _tasksFlow
     
     // ==================== 保存/更新 ====================
     

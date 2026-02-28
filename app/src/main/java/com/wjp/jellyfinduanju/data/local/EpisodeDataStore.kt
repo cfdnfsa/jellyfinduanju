@@ -24,8 +24,7 @@ import kotlinx.serialization.json.Json
  */
 class EpisodeDataStore {
     
-    // 使用独立的 MMKV 实例
-    private val mmkv = MMKV.mmkvWithID("episode_data")
+    private val mmkv by lazy { MMKV.mmkvWithID("episode_data") }
     
     // JSON 序列化器
     private val json = Json { 
