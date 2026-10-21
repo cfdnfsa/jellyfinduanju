@@ -17,15 +17,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
@@ -33,11 +39,12 @@ import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -56,8 +63,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
@@ -70,24 +81,31 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
+import com.wjp.jellyfinduanju.data.settings.AppSettings
+import kotlinx.coroutines.launch
 
 /**
  * ListScreen - 剧集列表页面
@@ -128,6 +146,7 @@ fun ListScreen(
         uiState = uiState,
         allFilterTags = viewModel.getAllFilterTags(),
         onRefreshClick = { viewModel.refreshSeriesList() },
+        onToggleViewMode = { viewModel.toggleViewMode() },
         onSeriesClick = onSeriesClick,
         onSeriesLongClick = { series -> viewModel.showSeriesMenu(series) },
         onDismissMenu = { viewModel.hideSeriesMenu() },
@@ -135,12 +154,15 @@ fun ListScreen(
         onMarkAsUnwatched = { viewModel.markSeriesAsWatched(false) },
         onCacheAll = { viewModel.showCacheAllDialog() },
         onDeleteAllCache = { viewModel.showDeleteAllCacheDialog() },
+        onDeleteSeries = { viewModel.showDeleteSeriesDialog() },
         onSetTag = { viewModel.showTagDialog() },
         onConfirmCacheAll = { viewModel.confirmCacheAll() },
         onConfirmDeleteAllCache = { viewModel.confirmDeleteAllCache() },
+        onConfirmDeleteSeries = { viewModel.confirmDeleteSeries() },
         onToggleTag = { tag, selected -> viewModel.toggleSeriesTag(tag, selected) },
         onClearTags = { viewModel.clearSeriesTags() },
         onFilterTagChange = { viewModel.updateFilterTag(it) },
+        onSortTypeChange = { sortType -> viewModel.toggleSortType(sortType) },
         onDismissDialog = { viewModel.hideDialog() },
         onErrorShown = { viewModel.clearError() },
         onSearchQueryChange = { viewModel.updateSearchQuery(it) },
@@ -154,12 +176,13 @@ fun ListScreen(
 /**
  * ListScreenContent - 列表页面内容（无状态组件）
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ListScreenContent(
     uiState: ListUiState,
     allFilterTags: List<String>,
     onRefreshClick: () -> Unit,
+    onToggleViewMode: () -> Unit,
     onSeriesClick: (SeriesLocalData) -> Unit,
     onSeriesLongClick: (SeriesLocalData) -> Unit,
     onDismissMenu: () -> Unit,
@@ -167,12 +190,15 @@ private fun ListScreenContent(
     onMarkAsUnwatched: () -> Unit,
     onCacheAll: () -> Unit,
     onDeleteAllCache: () -> Unit,
+    onDeleteSeries: () -> Unit,
     onSetTag: () -> Unit,
     onConfirmCacheAll: () -> Unit,
     onConfirmDeleteAllCache: () -> Unit,
+    onConfirmDeleteSeries: () -> Unit,
     onToggleTag: (String, Boolean) -> Unit,
     onClearTags: () -> Unit,
     onFilterTagChange: (String) -> Unit,
+    onSortTypeChange: (SortType) -> Unit,
     onDismissDialog: () -> Unit,
     onErrorShown: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -181,12 +207,34 @@ private fun ListScreenContent(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
+    var showSortMenu by remember { mutableStateOf(false) }
     
     // 显示错误信息
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
             snackbarHostState.showSnackbar(error)
             onErrorShown()
+        }
+    }
+    
+    // 获取所有标签
+    val allTags = allFilterTags
+    val selectedIndex = allTags.indexOf(uiState.selectedFilterTag).coerceAtLeast(0)
+    
+    // HorizontalPager 状态
+    val pagerState = rememberPagerState(
+        initialPage = selectedIndex,
+        pageCount = { allTags.size }
+    )
+    val coroutineScope = rememberCoroutineScope()
+    
+    // 监听 pager 滑动完成，同步到 ViewModel（只在滑动停止时触发）
+    LaunchedEffect(pagerState.settledPage) {
+        if (pagerState.settledPage < allTags.size) {
+            val newTag = allTags[pagerState.settledPage]
+            if (newTag != uiState.selectedFilterTag) {
+                onFilterTagChange(newTag)
+            }
         }
     }
     
@@ -203,7 +251,11 @@ private fun ListScreenContent(
                             .padding(end = 8.dp),
                         placeholder = {
                             Text(
-                                "搜索剧集...",
+                                if (uiState.viewMode == ViewMode.CLOUD) {
+                                    "搜索"
+                                } else {
+                                    "搜索"
+                                },
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         },
@@ -245,6 +297,118 @@ private fun ListScreenContent(
                     )
                 },
                 actions = {
+                    // 排序按钮
+                    Box {
+                        IconButton(onClick = { showSortMenu = true }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Sort,
+                                contentDescription = "排序"
+                            )
+                        }
+                        
+                        // 排序菜单
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false }
+                        ) {
+                            // 按名称
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("按名称")
+                                        if (uiState.sortType == SortType.NAME) {
+                                            Icon(
+                                                imageVector = if (uiState.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortTypeChange(SortType.NAME)
+                                    showSortMenu = false
+                                }
+                            )
+                            
+                            // 按更新时间
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("按更新时间")
+                                        if (uiState.sortType == SortType.UPDATE_TIME) {
+                                            Icon(
+                                                imageVector = if (uiState.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortTypeChange(SortType.UPDATE_TIME)
+                                    showSortMenu = false
+                                }
+                            )
+                            
+                            // 按播放时间
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("按播放时间")
+                                        if (uiState.sortType == SortType.PLAY_TIME) {
+                                            Icon(
+                                                imageVector = if (uiState.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortTypeChange(SortType.PLAY_TIME)
+                                    showSortMenu = false
+                                }
+                            )
+                        }
+                    }
+                    
+                    // 模式切换按钮（云端 ↔ 本地）
+                    IconButton(onClick = onToggleViewMode) {
+                        Icon(
+                            imageVector = if (uiState.viewMode == ViewMode.CLOUD) {
+                                Icons.Default.CloudQueue  // 云端模式
+                            } else {
+                                Icons.Default.Folder  // 本地模式
+                            },
+                            contentDescription = if (uiState.viewMode == ViewMode.CLOUD) {
+                                "切换到本地"
+                            } else {
+                                "切换到云端"
+                            },
+                            tint = if (uiState.viewMode == ViewMode.CLOUD) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.secondary
+                            }
+                        )
+                    }
+                    
                     // 刷新按钮
                     IconButton(
                         onClick = onRefreshClick,
@@ -275,39 +439,56 @@ private fun ListScreenContent(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // 标签筛选栏（始终显示）
+            // 标签筛选栏（直接使用 pagerState.currentPage，实时同步）
             TagFilterBar(
-                allTags = allFilterTags,
-                selectedTag = uiState.selectedFilterTag,
-                onTagSelected = onFilterTagChange
+                allTags = allTags,
+                currentPage = pagerState.currentPage,
+                currentPageOffsetFraction = pagerState.currentPageOffsetFraction,
+                onTagSelected = { tag ->
+                    val index = allTags.indexOf(tag)
+                    if (index >= 0) {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(index)
+                        }
+                    }
+                }
             )
             
-            // 内容区域
-            Box(modifier = Modifier.fillMaxSize()) {
-                when {
-                    // 加载中且列表为空
-                    uiState.isLoading && uiState.seriesList.isEmpty() -> {
-                        LoadingContent()
-                    }
-                    // 列表为空
-                    uiState.isEmpty && !uiState.isLoading -> {
-                        EmptyContent(onRefreshClick = onRefreshClick)
-                    }
-                    // 显示列表
-                    else -> {
-                        SeriesGrid(
-                            seriesList = uiState.seriesList,
-                            selectedSeries = uiState.selectedSeries,
-                            onSeriesClick = onSeriesClick,
-                            onSeriesLongClick = onSeriesLongClick,
-                            onDismissMenu = onDismissMenu,
-                            onMarkAsWatched = onMarkAsWatched,
-                            onMarkAsUnwatched = onMarkAsUnwatched,
-                            onCacheAll = onCacheAll,
-                            onDeleteAllCache = onDeleteAllCache,
-                            onSetTag = onSetTag,
-                            getImageUrl = getImageUrl
-                        )
+            // HorizontalPager
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                // 只在当前页面渲染内容
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when {
+                        // 加载中且列表为空
+                        uiState.isLoading && uiState.seriesList.isEmpty() -> {
+                            LoadingContent()
+                        }
+                        // 列表为空
+                        uiState.isEmpty && !uiState.isLoading -> {
+                            EmptyContent(onRefreshClick = onRefreshClick)
+                        }
+                        // 显示列表
+                        else -> {
+                            SeriesGrid(
+                                seriesList = uiState.seriesList,
+                                selectedSeries = uiState.selectedSeries,
+                                sortType = uiState.sortType,
+                                sortAscending = uiState.sortAscending,
+                                onSeriesClick = onSeriesClick,
+                                onSeriesLongClick = onSeriesLongClick,
+                                onDismissMenu = onDismissMenu,
+                                onMarkAsWatched = onMarkAsWatched,
+                                onMarkAsUnwatched = onMarkAsUnwatched,
+                                onCacheAll = onCacheAll,
+                                onDeleteAllCache = onDeleteAllCache,
+                                onDeleteSeries = onDeleteSeries,
+                                onSetTag = onSetTag,
+                                getImageUrl = getImageUrl
+                            )
+                        }
                     }
                 }
             }
@@ -319,7 +500,7 @@ private fun ListScreenContent(
         val series = uiState.selectedSeries ?: return@let
         
         when (dialogType) {
-            DialogType.CACHE_ALL, DialogType.DELETE_ALL_CACHE -> {
+            DialogType.CACHE_ALL, DialogType.DELETE_ALL_CACHE, DialogType.DELETE_SERIES -> {
                 AlertDialog(
                     onDismissRequest = onDismissDialog,
                     title = {
@@ -327,6 +508,7 @@ private fun ListScreenContent(
                             text = when (dialogType) {
                                 DialogType.CACHE_ALL -> "缓存全部"
                                 DialogType.DELETE_ALL_CACHE -> "删除全部缓存"
+                                DialogType.DELETE_SERIES -> "删除剧集"
                                 else -> ""
                             }
                         )
@@ -336,6 +518,7 @@ private fun ListScreenContent(
                             text = when (dialogType) {
                                 DialogType.CACHE_ALL -> "确定要下载「${series.name}」的全部剧集吗？"
                                 DialogType.DELETE_ALL_CACHE -> "确定要删除「${series.name}」的全部本地缓存吗？"
+                                DialogType.DELETE_SERIES -> "确定要删除「${series.name}」吗？\n\n此操作将删除：\n• 列表数据\n• 剧集详情\n• 所有下载的视频\n\n此操作不可撤销！"
                                 else -> ""
                             }
                         )
@@ -346,11 +529,18 @@ private fun ListScreenContent(
                                 when (dialogType) {
                                     DialogType.CACHE_ALL -> onConfirmCacheAll()
                                     DialogType.DELETE_ALL_CACHE -> onConfirmDeleteAllCache()
+                                    DialogType.DELETE_SERIES -> onConfirmDeleteSeries()
                                     else -> {}
                                 }
                             }
                         ) {
-                            Text("确定")
+                            Text(
+                                text = "确定",
+                                color = if (dialogType == DialogType.DELETE_SERIES) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.primary
+                            )
                         }
                     },
                     dismissButton = {
@@ -363,7 +553,7 @@ private fun ListScreenContent(
             
             DialogType.SET_TAG -> {
                 // 标签选择对话框（多选）
-                val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
+                val customTags = AppSettings.customTags
                 AlertDialog(
                     onDismissRequest = onDismissDialog,
                     title = { Text("设置标签") },
@@ -483,93 +673,87 @@ private fun ListScreenContent(
 }
 
 /**
- * TagFilterBar - 标签筛选栏
+ * TagFilterBar - 标签筛选栏（紧凑胶囊式）
  *
- * 横向滚动显示所有可用标签
+ * 使用 FilterChip 实现，更紧凑、更现代
  */
 @Composable
 private fun TagFilterBar(
     allTags: List<String>,
-    selectedTag: String,
+    currentPage: Int,
+    currentPageOffsetFraction: Float,
     onTagSelected: (String) -> Unit
 ) {
-    val customTags = com.wjp.jellyfinduanju.data.settings.AppSettings.customTags
+    val customTags = AppSettings.customTags
+    val lazyListState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    
+    // 自动滚动到选中项
+    LaunchedEffect(currentPage) {
+        if (currentPage in allTags.indices) {
+            lazyListState.animateScrollToItem(currentPage)
+        }
+    }
 
     LazyRow(
+        state = lazyListState,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .background(MaterialTheme.colorScheme.surface),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        items(allTags.size) { index ->
-            val tag = allTags[index]
-            val isSelected = tag == selectedTag
-
-            // 根据标签类型设置不同颜色
-            val (containerColor, labelColor, icon) = when {
-                tag == "全部" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    null
-                )
-                tag == "正在看" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.PlayCircle
-                )
-                tag == "已缓存" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.Download
-                )
-                tag == "未看" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.VisibilityOff
-                )
-                tag == "已看" -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.CheckCircle
-                )
-                tag in customTags -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.Label
-                )
-                // 其他的都是云端文件夹标签
-                else -> Triple(
-                    if (isSelected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    if (isSelected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Icons.Default.Folder
-                )
+        itemsIndexed(allTags) { index, tag ->
+            val isSelected = index == currentPage
+            
+            // 根据标签类型获取图标
+            val icon = when {
+                tag == "全部" -> null
+                tag == "正在看" -> Icons.Default.PlayCircle
+                tag == "已缓存" -> Icons.Default.Download
+                tag == "未看" -> Icons.Default.VisibilityOff
+                tag == "已看" -> Icons.Default.CheckCircle
+                tag in customTags -> Icons.AutoMirrored.Filled.Label
+                else -> Icons.Default.Folder  // 文件夹标签
             }
             
             FilterChip(
                 selected = isSelected,
                 onClick = { onTagSelected(tag) },
-                label = { 
+                label = {
                     Text(
                         text = tag,
-                        style = MaterialTheme.typography.labelMedium
-                    ) 
+                        style = MaterialTheme.typography.labelSmall,  // 更小的字体
+                        fontSize = 12.sp  // 明确设置字号
+                    )
                 },
-                leadingIcon = icon?.let { iconVector ->
+                leadingIcon = if (icon != null) {
                     {
                         Icon(
-                            imageVector = iconVector,
+                            imageVector = icon,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)  // 更小的图标
                         )
                     }
-                },
+                } else null,
                 colors = FilterChipDefaults.filterChipColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    selectedContainerColor = containerColor,
-                    selectedLabelColor = labelColor,
-                    selectedLeadingIconColor = labelColor
-                )
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = isSelected,
+                    borderColor = if (isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    },
+                    selectedBorderColor = MaterialTheme.colorScheme.primary,
+                    borderWidth = 1.dp,
+                    selectedBorderWidth = 1.dp
+                ),
+                modifier = Modifier.height(28.dp)  // 紧凑高度
             )
         }
     }
@@ -584,6 +768,8 @@ private fun TagFilterBar(
 private fun SeriesGrid(
     seriesList: List<SeriesLocalData>,
     selectedSeries: SeriesLocalData?,
+    sortType: SortType,
+    sortAscending: Boolean,
     onSeriesClick: (SeriesLocalData) -> Unit,
     onSeriesLongClick: (SeriesLocalData) -> Unit,
     onDismissMenu: () -> Unit,
@@ -591,11 +777,22 @@ private fun SeriesGrid(
     onMarkAsUnwatched: () -> Unit,
     onCacheAll: () -> Unit,
     onDeleteAllCache: () -> Unit,
+    onDeleteSeries: () -> Unit,
     onSetTag: () -> Unit,
     getImageUrl: (String, (String?) -> Unit) -> Unit
 ) {
+    val gridState = rememberLazyGridState()
+    
+    // 监听排序变化，滚动到顶部
+    LaunchedEffect(sortType, sortAscending) {
+        if (seriesList.isNotEmpty()) {
+            gridState.scrollToItem(0)
+        }
+    }
+    
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),  // 固定一行三个
+        state = gridState,
         contentPadding = PaddingValues(8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -603,7 +800,8 @@ private fun SeriesGrid(
     ) {
         items(
             items = seriesList,
-            key = { it.id }
+            key = { it.id },
+            contentType = { "series_card" }
         ) { series ->
             SeriesGridItem(
                 series = series,
@@ -615,8 +813,10 @@ private fun SeriesGrid(
                 onMarkAsUnwatched = onMarkAsUnwatched,
                 onCacheAll = onCacheAll,
                 onDeleteAllCache = onDeleteAllCache,
+                onDeleteSeries = onDeleteSeries,
                 onSetTag = onSetTag,
-                getImageUrl = getImageUrl
+                getImageUrl = getImageUrl,
+                modifier = Modifier.animateItem()
             )
         }
     }
@@ -639,8 +839,10 @@ private fun SeriesGridItem(
     onMarkAsUnwatched: () -> Unit,
     onCacheAll: () -> Unit,
     onDeleteAllCache: () -> Unit,
+    onDeleteSeries: () -> Unit,
     onSetTag: () -> Unit,
-    getImageUrl: (String, (String?) -> Unit) -> Unit
+    getImageUrl: (String, (String?) -> Unit) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     // 图片 URL 状态
     var imageUrl by remember { mutableStateOf<String?>(null) }
@@ -652,7 +854,9 @@ private fun SeriesGridItem(
         }
     }
     
-    Box {
+    Box(
+        modifier = modifier  // 应用从外部传入的 modifier（包含 animateItem）
+    ) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -678,9 +882,15 @@ private fun SeriesGridItem(
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 if (imageUrl != null) {
-                    // 显示图片
+                    // 显示图片（优化：加载缩略图）
                     AsyncImage(
-                        model = imageUrl,
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(imageUrl)
+                            .crossfade(300)  // 300ms 淡入动画
+                            .size(400, 600)  // 缩略图尺寸（宽400px，高600px，足够清晰）
+                            .memoryCachePolicy(CachePolicy.ENABLED)  // 启用内存缓存
+                            .diskCachePolicy(CachePolicy.ENABLED)    // 启用磁盘缓存
+                            .build(),
                         contentDescription = series.name,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
@@ -879,8 +1089,29 @@ private fun SeriesGridItem(
                 onClick = onSetTag,
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.Default.Label,
+                        imageVector = Icons.AutoMirrored.Filled.Label,
                         contentDescription = null
+                    )
+                }
+            )
+            
+            // 分割线
+            HorizontalDivider()
+            
+            // 删除剧集（危险操作，红色显示）
+            DropdownMenuItem(
+                text = { 
+                    Text(
+                        text = "删除剧集",
+                        color = MaterialTheme.colorScheme.error
+                    ) 
+                },
+                onClick = onDeleteSeries,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
                     )
                 }
             )

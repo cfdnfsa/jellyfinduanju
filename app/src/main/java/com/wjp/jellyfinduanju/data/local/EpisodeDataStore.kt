@@ -53,7 +53,6 @@ class EpisodeDataStore {
         mmkv.encode(key, jsonString)
         // 更新缓存时间
         mmkv.encode(cacheTimeKey(seriesId), System.currentTimeMillis())
-        android.util.Log.d("EpisodeDataStore", "saveSeasons: 保存 ${seasons.size} 个季到 key=$key")
     }
     
     /**
@@ -67,16 +66,13 @@ class EpisodeDataStore {
         val jsonString = mmkv.decodeString(key)
         
         if (jsonString.isNullOrEmpty()) {
-            android.util.Log.d("EpisodeDataStore", "getSeasons: 缓存不存在 key=$key")
             return@withContext null
         }
         
         return@withContext try {
             val result = json.decodeFromString<List<SeasonLocalData>>(jsonString)
-            android.util.Log.d("EpisodeDataStore", "getSeasons: 从缓存加载 ${result.size} 个季")
             result
         } catch (e: Exception) {
-            android.util.Log.e("EpisodeDataStore", "getSeasons: 解析失败 key=$key", e)
             // 解析失败，删除损坏的缓存
             mmkv.removeValueForKey(key)
             null
@@ -105,7 +101,6 @@ class EpisodeDataStore {
         val key = episodesKey(seasonId)
         val jsonString = json.encodeToString(episodes)
         mmkv.encode(key, jsonString)
-        android.util.Log.d("EpisodeDataStore", "saveEpisodes: 保存 ${episodes.size} 个剧集到 key=$key")
     }
     
     /**
@@ -119,16 +114,13 @@ class EpisodeDataStore {
         val jsonString = mmkv.decodeString(key)
         
         if (jsonString.isNullOrEmpty()) {
-            android.util.Log.d("EpisodeDataStore", "getEpisodes: 缓存不存在 key=$key")
             return@withContext null
         }
         
         return@withContext try {
             val result = json.decodeFromString<List<EpisodeLocalData>>(jsonString)
-            android.util.Log.d("EpisodeDataStore", "getEpisodes: 从缓存加载 ${result.size} 个剧集")
             result
         } catch (e: Exception) {
-            android.util.Log.e("EpisodeDataStore", "getEpisodes: 解析失败 key=$key", e)
             // 解析失败，删除损坏的缓存
             mmkv.removeValueForKey(key)
             null

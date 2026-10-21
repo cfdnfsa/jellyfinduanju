@@ -42,7 +42,8 @@ import com.wjp.jellyfinduanju.ui.screens.settings.SettingsScreen
 import com.wjp.jellyfinduanju.ui.screens.settings.SettingsViewModel
 import com.wjp.jellyfinduanju.ui.screens.settings.SettingsViewModelFactory
 import com.wjp.jellyfinduanju.ui.screens.settings.cache.CacheSettingsScreen
-import com.wjp.jellyfinduanju.ui.screens.settings.TagManageScreen
+import com.wjp.jellyfinduanju.ui.screens.settings.tag.TagManageScreen
+import com.wjp.jellyfinduanju.ui.screens.settings.folder.LocalFolderManageScreen
 import com.wjp.jellyfinduanju.ui.screens.player.PlayerScreen
 import com.wjp.jellyfinduanju.ui.screens.player.PlayerViewModel
 import com.wjp.jellyfinduanju.ui.screens.player.PlayerViewModelFactory
@@ -57,6 +58,7 @@ import com.wjp.jellyfinduanju.ui.screens.player.PlayerViewModelFactory
 private object Routes {
     const val CACHE_SETTINGS = "cache_settings"
     const val TAG_MANAGE = "tag_manage"
+    const val LOCAL_FOLDER_MANAGE = "local_folder_manage"
     const val SERIES_DETAIL = "series_detail/{seriesId}"
     const val PLAYER = "player/{seriesId}/{episodeId}"
     
@@ -315,6 +317,9 @@ private fun MainNavHost(
                 },
                 onNavigateToTagManage = {
                     navController.navigate(Routes.TAG_MANAGE)
+                },
+                onNavigateToLocalFolderManage = {
+                    navController.navigate(Routes.LOCAL_FOLDER_MANAGE)
                 }
             )
         }
@@ -336,6 +341,13 @@ private fun MainNavHost(
                     // 删除标签时，从所有剧集中移除该标签
                     seriesRepository.removeTagFromAllSeries(tag)
                 }
+            )
+        }
+        
+        // 本地文件夹管理页面
+        composable(Routes.LOCAL_FOLDER_MANAGE) {
+            LocalFolderManageScreen(
+                onBack = { navController.popBackStack() }
             )
         }
         
@@ -393,6 +405,7 @@ private fun MainNavHost(
                 val playerViewModel: PlayerViewModel = viewModel(
                     factory = PlayerViewModelFactory(
                         detailRepository = JellyfinApp.instance.detailRepository,
+                        seriesRepository = JellyfinApp.instance.seriesRepository,
                         series = series,
                         initialEpisodeId = episodeId
                     )

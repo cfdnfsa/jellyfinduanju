@@ -2,6 +2,7 @@ package com.wjp.jellyfinduanju.data.repository
 
 import android.os.Build
 import com.wjp.jellyfinduanju.data.local.EpisodeDataStore
+import com.wjp.jellyfinduanju.data.local.SeriesDataStore
 import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
 import com.wjp.jellyfinduanju.data.model.SeasonLocalData
 import com.wjp.jellyfinduanju.data.network.JellyfinAuthHeader
@@ -19,18 +20,22 @@ import kotlinx.coroutines.withContext
  * 2. 获取季的剧集列表（优先本地缓存）
  * 3. 刷新数据（从服务器同步并保存到本地）
  * 4. 标记剧集为已看完
+ * 5. 支持本地导入剧集（不请求网络）
  * 
  * 缓存策略：
  * - 有缓存时使用本地缓存
  * - 无缓存时请求网络
  * - 手动刷新时强制请求网络并更新缓存
  * - 一切以服务器数据为准
+ * - 本地导入的剧集只使用本地数据，不请求网络
  * 
  * @param authRepository 认证仓库，用于获取用户会话和设备信息
+ * @param seriesDataStore 剧集数据存储，用于判断是否是本地导入
  * @param episodeDataStore 剧集本地数据存储
  */
 class DetailRepository(
     private val authRepository: AuthRepository,
+    private val seriesDataStore: SeriesDataStore,
     private val episodeDataStore: EpisodeDataStore
 ) {
     
@@ -40,20 +45,29 @@ class DetailRepository(
      * 获取剧集的所有季
      * 
      * 缓存策略：
-     * - 有缓存 → 返回缓存
-     * - 无缓存 → 请求网络 → 保存缓存 → 返回
+     * - 本地导入：只使用缓存，不请求网络
+     * - 云端剧集：有缓存 → 返回缓存；无缓存 → 请求网络 → 保存缓存 → 返回
      * 
      * @param seriesId 剧集 ID
      * @return 成功返回季列表，失败返回异常
      */
     suspend fun getSeasons(seriesId: String): Result<List<SeasonLocalData>> = withContext(Dispatchers.IO) {
+        // 检查是否是本地导入的剧集
+        val series = seriesDataStore.getSeries(seriesId)
+        val isLocalImport = series?.isLocalImport == true
+        
         // 先检查本地缓存
         val cachedSeasons = episodeDataStore.getSeasons(seriesId)
         if (cachedSeasons != null) {
             return@withContext Result.success(cachedSeasons)
         }
         
-        // 无缓存，从网络获取
+        // 本地导入的剧集不请求网络
+        if (isLocalImport) {
+            return@withContext Result.failure(Exception("本地剧集数据未找到"))
+        }
+        
+        // 云端剧集：无缓存，从网络获取
         fetchSeasonsFromNetwork(seriesId)
     }
     
@@ -61,21 +75,30 @@ class DetailRepository(
      * 获取某季的所有剧集
      * 
      * 缓存策略：
-     * - 有缓存 → 返回缓存
-     * - 无缓存 → 请求网络 → 保存缓存 → 返回
+     * - 本地导入：只使用缓存，不请求网络
+     * - 云端剧集：有缓存 → 返回缓存；无缓存 → 请求网络 → 保存缓存 → 返回
      * 
      * @param seriesId 剧集 ID
      * @param seasonId 季 ID
      * @return 成功返回剧集列表，失败返回异常
      */
     suspend fun getEpisodes(seriesId: String, seasonId: String): Result<List<EpisodeLocalData>> = withContext(Dispatchers.IO) {
+        // 检查是否是本地导入的剧集
+        val series = seriesDataStore.getSeries(seriesId)
+        val isLocalImport = series?.isLocalImport == true
+        
         // 先检查本地缓存
         val cachedEpisodes = episodeDataStore.getEpisodes(seasonId)
         if (cachedEpisodes != null) {
             return@withContext Result.success(cachedEpisodes)
         }
         
-        // 无缓存，从网络获取
+        // 本地导入的剧集不请求网络
+        if (isLocalImport) {
+            return@withContext Result.failure(Exception("本地剧集数据未找到"))
+        }
+        
+        // 云端剧集：无缓存，从网络获取
         fetchEpisodesFromNetwork(seriesId, seasonId)
     }
     
@@ -95,11 +118,18 @@ class DetailRepository(
      * 刷新季列表
      * 
      * 强制从网络获取最新数据并更新缓存
+     * 本地导入的剧集不支持此操作
      * 
      * @param seriesId 剧集 ID
      * @return 成功返回季列表，失败返回异常
      */
     suspend fun refreshSeasons(seriesId: String): Result<List<SeasonLocalData>> = withContext(Dispatchers.IO) {
+        // 检查是否是本地导入的剧集
+        val series = seriesDataStore.getSeries(seriesId)
+        if (series?.isLocalImport == true) {
+            return@withContext Result.failure(Exception("本地剧集不支持从服务器刷新"))
+        }
+        
         fetchSeasonsFromNetwork(seriesId)
     }
     
@@ -107,12 +137,19 @@ class DetailRepository(
      * 刷新某季的剧集列表
      * 
      * 强制从网络获取最新数据并更新缓存
+     * 本地导入的剧集不支持此操作
      * 
      * @param seriesId 剧集 ID
      * @param seasonId 季 ID
      * @return 成功返回剧集列表，失败返回异常
      */
     suspend fun refreshEpisodes(seriesId: String, seasonId: String): Result<List<EpisodeLocalData>> = withContext(Dispatchers.IO) {
+        // 检查是否是本地导入的剧集
+        val series = seriesDataStore.getSeries(seriesId)
+        if (series?.isLocalImport == true) {
+            return@withContext Result.failure(Exception("本地剧集不支持从服务器刷新"))
+        }
+        
         fetchEpisodesFromNetwork(seriesId, seasonId)
     }
     
@@ -588,6 +625,8 @@ class DetailRepository(
     /**
      * 上报播放开始
      * 
+     * 本地导入的剧集不上报
+     * 
      * @param episodeId 剧集 ID
      * @param positionTicks 起始位置
      * @return 是否成功
@@ -596,6 +635,11 @@ class DetailRepository(
         episodeId: String,
         positionTicks: Long = 0
     ): Boolean = withContext(Dispatchers.IO) {
+        // 本地导入的剧集不上报
+        if (episodeId.startsWith("local_")) {
+            return@withContext true
+        }
+        
         try {
             val serverConfig = authRepository.serverConfig.first() ?: return@withContext false
             val userSession = authRepository.userSession.first() ?: return@withContext false
@@ -633,6 +677,11 @@ class DetailRepository(
         episodeId: String,
         positionTicks: Long
     ): Boolean = withContext(Dispatchers.IO) {
+        // 本地导入的剧集不上报
+        if (episodeId.startsWith("local_")) {
+            return@withContext true
+        }
+        
         try {
             val serverConfig = authRepository.serverConfig.first() ?: return@withContext false
             val userSession = authRepository.userSession.first() ?: return@withContext false
@@ -719,6 +768,19 @@ class DetailRepository(
         }
         
         successCount
+    }
+    
+    // ==================== 本地导入剧集管理 ====================
+    
+    /**
+     * 更新剧集数据（仅本地）
+     * 
+     * 用于本地导入的剧集，不调用网络 API
+     * 
+     * @param episode 更新后的剧集数据
+     */
+    suspend fun updateEpisodeLocalOnly(episode: EpisodeLocalData) = withContext(Dispatchers.IO) {
+        episodeDataStore.updateEpisode(episode.seasonId, episode)
     }
     
     // ==================== 辅助方法 ====================

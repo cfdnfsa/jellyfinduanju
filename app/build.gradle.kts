@@ -13,8 +13,8 @@ android {
         applicationId = "com.wjp.jellyfinduanju"
         minSdk = 33
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -89,6 +89,9 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
+    
+    // 文件访问
+    implementation(libs.androidx.documentfile)
     
     // Testing
     testImplementation(libs.junit)
