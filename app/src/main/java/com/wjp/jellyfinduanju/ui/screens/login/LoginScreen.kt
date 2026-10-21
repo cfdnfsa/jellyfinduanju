@@ -80,8 +80,7 @@ import com.wjp.jellyfinduanju.ui.theme.JellyfinDuanjuTheme
  */
 @Composable
 fun LoginScreen(
-    viewModel: LoginViewModel,       // ViewModel：管理页面状态和业务逻辑
-    onLoginSuccess: () -> Unit       // 回调函数：登录成功后通知外部（用于页面跳转）
+    viewModel: LoginViewModel       // ViewModel：管理页面状态和业务逻辑
 ) {
     // ==================== 状态订阅 ====================
     // 
@@ -104,21 +103,6 @@ fun LoginScreen(
     // 焦点管理器：用于控制输入框焦点、隐藏键盘等
     // LocalFocusManager.current 是 Compose 提供的"环境变量"
     val focusManager = LocalFocusManager.current
-    
-    // ==================== 副作用：监听状态变化执行操作 ====================
-    // 
-    // LaunchedEffect(key) { } 的工作方式：
-    // - 当 key 的值发生变化时，执行 { } 中的代码
-    // - 内部是协程环境，可以调用 suspend 函数
-    // - 当 key 没变化时，重组不会重新执行里面的代码
-    //
-    // 监听登录成功状态
-    // key = uiState.isLoginSuccess，当它从 false 变为 true 时触发
-    LaunchedEffect(uiState.isLoginSuccess) {
-        if (uiState.isLoginSuccess) {
-            onLoginSuccess()  // 调用回调，通知外部登录成功（跳转到主页）
-        }
-    }
     
     // 监听错误信息
     // key = uiState.error，当它从 null 变为有值时触发
@@ -193,22 +177,31 @@ fun LoginScreen(
                 enter = fadeIn() + slideInVertically(), // 进入动画：淡入 + 从上滑入
                 exit = fadeOut() + slideOutVertically() // 退出动画：淡出 + 向上滑出
             ) {
-                // ServerInputCard 组件的参数说明：
-                ServerInputCard(
-                    // 【数据参数】从 ViewModel 获取，用于显示
-                    serverUrl = uiState.serverUrl,      // 输入框显示的服务器地址
-                    isLoading = uiState.isLoading,      // 是否正在加载（显示加载圈）
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    ServerInputCard(
+                        serverUrl = uiState.serverUrl,
+                        isLoading = uiState.isLoading,
+                        onServerUrlChange = viewModel::updateServerUrl,
+                        onValidate = {
+                            focusManager.clearFocus()
+                            viewModel.validateServer()
+                        }
+                    )
                     
-                    // 【回调参数】用户操作时调用，通知 ViewModel
-                    onServerUrlChange = viewModel::updateServerUrl,  // 用户输入时更新地址
-                    // viewModel::updateServerUrl 等价于 { text -> viewModel.updateServerUrl(text) }
+                    Spacer(modifier = Modifier.height(16.dp))
                     
-                    onValidate = {
-                        // 用户点击"连接服务器"按钮时执行
-                        focusManager.clearFocus()       // 1. 隐藏键盘
-                        viewModel.validateServer()      // 2. 验证服务器
+                    TextButton(
+                        onClick = { viewModel.skipLogin() },
+                        enabled = !uiState.isLoading
+                    ) {
+                        Text(
+                            text = "跳过，使用本地模式",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                )
+                }
             }
             
             // 卡片 2：用户名密码输入（已验证服务器时显示）

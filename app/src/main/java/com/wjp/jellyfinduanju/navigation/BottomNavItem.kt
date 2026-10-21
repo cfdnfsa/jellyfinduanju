@@ -1,6 +1,7 @@
 package com.wjp.jellyfinduanju.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.List
 import androidx.compose.material.icons.outlined.Settings
@@ -26,7 +27,7 @@ sealed class BottomNavItem(
     data object List : BottomNavItem(
         route = "list",
         title = "列表",
-        icon = Icons.Outlined.List // 简约线条风格
+        icon = Icons.AutoMirrored.Outlined.List // 简约线条风格
     )
 
     /**

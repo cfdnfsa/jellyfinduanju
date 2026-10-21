@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization) // Kotlin 序列化插件
+    alias(libs.plugins.hilt) // Hilt 依赖注入
+    alias(libs.plugins.kotlin.kapt) // 注解处理器
 }
 
 android {
@@ -13,8 +15,8 @@ android {
         applicationId = "com.wjp.jellyfinduanju"
         minSdk = 33
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -89,6 +91,14 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
+    
+    // 文件访问
+    implementation(libs.androidx.documentfile)
+    
+    // Hilt 依赖注入
+    implementation(libs.hilt.android)
+    kapt(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
     
     // Testing
     testImplementation(libs.junit)

@@ -44,16 +44,6 @@ class AuthRepository(
     val serverConfig: Flow<ServerConfig?> = dataStore.serverConfig
     
     /**
-     * 获取备用服务器地址 Flow
-     */
-    val secondaryServerUrl: Flow<String?> = dataStore.secondaryServerUrl
-    
-    /**
-     * 获取当前激活的服务器索引 Flow
-     */
-    val activeServerIndex: Flow<Int> = dataStore.activeServerIndex
-    
-    /**
      * 获取当前激活的服务器地址
      */
     fun getActiveServerUrl(): String? = dataStore.getActiveServerUrl()
@@ -176,6 +166,20 @@ class AuthRepository(
         } catch (e: Exception) {
             Result.failure(Exception("登录请求失败: ${e.message}"))
         }
+    }
+    
+    /**
+     * 跳过服务器连接，以本地模式进入应用
+     * 不需要网络请求，直接创建一个本地模式的 UserSession
+     */
+    fun enterLocalMode() {
+        val localSession = UserSession(
+            userId = "local",
+            username = "本地用户",
+            accessToken = "",
+            serverId = "local"
+        )
+        dataStore.saveUserSession(localSession)
     }
     
     // ==================== 登出 ====================

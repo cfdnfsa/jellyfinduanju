@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
@@ -51,7 +52,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 
 /**
  * CacheSettingsScreen - 缓存设置页面（有状态组件）
@@ -72,12 +73,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  * - 有状态/无状态分离：此组件有状态，CacheSettingsContent 无状态
  * 
  * @param onBack 返回按钮点击回调，由导航层提供，用于返回上一页
- * @param viewModel 缓存设置页面的 ViewModel，默认通过 viewModel() 创建
+ * @param viewModel 缓存设置页面的 ViewModel，默认通过 hiltViewModel() 创建（使用 Hilt 依赖注入）
  */
 @Composable
 fun CacheSettingsScreen(
     onBack: () -> Unit,
-    viewModel: CacheSettingsViewModel = viewModel()
+    viewModel: CacheSettingsViewModel = hiltViewModel()
 ) {
     // 收集 ViewModel 的状态
     // collectAsState() 会将 StateFlow 转换为 Compose 的 State
@@ -225,7 +226,7 @@ private fun CacheSettingsContent(
             Text(
                 text = "缓存概览",
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
             )
             
@@ -233,7 +234,7 @@ private fun CacheSettingsContent(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 )
             ) {
                 Row(
@@ -246,7 +247,7 @@ private fun CacheSettingsContent(
                     Icon(
                         imageVector = Icons.Default.Folder,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
@@ -261,7 +262,7 @@ private fun CacheSettingsContent(
                             text = uiState.totalCacheSize,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -274,7 +275,7 @@ private fun CacheSettingsContent(
             Text(
                 text = "缓存路径",
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
             )
             
@@ -322,7 +323,7 @@ private fun CacheSettingsContent(
             Text(
                 text = "文件缓存",
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
             )
             
@@ -383,7 +384,7 @@ private fun CacheSettingsContent(
             Text(
                 text = "数据缓存",
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
             )
             
@@ -394,7 +395,7 @@ private fun CacheSettingsContent(
                         .fillMaxWidth()
                         .padding(bottom = 8.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )
                 ) {
                     Row(
@@ -404,14 +405,14 @@ private fun CacheSettingsContent(
                         Icon(
                             imageVector = Icons.Default.Storage,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.tertiary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "有 ${uiState.cachedSeriesCount} 个剧集有视频缓存，其数据不会被清除",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -436,9 +437,9 @@ private fun CacheSettingsContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.List,
+                            imageVector = Icons.AutoMirrored.Filled.List,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
@@ -474,7 +475,7 @@ private fun CacheSettingsContent(
                         Icon(
                             imageVector = Icons.Default.Folder,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
@@ -656,7 +657,7 @@ private fun CachePathItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(32.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -677,7 +678,7 @@ private fun CachePathItem(
                 Text(
                     text = "$size ($fileCount 个文件)",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))

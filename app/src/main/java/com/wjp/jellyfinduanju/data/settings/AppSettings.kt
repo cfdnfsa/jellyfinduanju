@@ -3,7 +3,32 @@ package com.wjp.jellyfinduanju.data.settings
 import android.content.Context
 import android.os.Environment
 import com.tencent.mmkv.MMKV
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.io.File
+
+/**
+ * LocalFolderReference - 本地文件夹引用信息
+ * 
+ * 记录用户添加的本地文件夹，用于刷新和管理
+ * 
+ * @property uri 文件夹 URI（持久化权限）
+ * @property displayName 显示名称（从路径提取）
+ * @property addTime 添加时间
+ * @property lastScanTime 最后扫描时间
+ * @property seriesCount 该文件夹下的剧集数量
+ * @property permissionStatus 权限状态：0=正常，-1=权限失效
+ */
+@Serializable
+data class LocalFolderReference(
+    val uri: String,
+    val displayName: String,
+    val addTime: Long,
+    val lastScanTime: Long = 0,
+    val seriesCount: Int = 0,
+    val permissionStatus: Int = 0
+)
 
 /**
  * AppSettings - 应用设置数据类
@@ -21,6 +46,12 @@ object AppSettings {
     
     // MMKV 实例，用于持久化存储
     private lateinit var mmkv: MMKV
+    
+    // JSON 序列化器
+    private val json = Json { 
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
     
     // 默认缓存目录名
     private const val DEFAULT_IMAGE_CACHE_DIR = "image_cache"
@@ -160,6 +191,40 @@ object AppSettings {
             mmkv.encode(Keys.CUSTOM_TAGS, value.joinToString(","))
         }
     
+    // ==================== 列表排序设置 ====================
+    
+    /**
+     * 列表排序类型
+     * 默认：按更新时间降序
+     */
+    var listSortType: String
+        get() = mmkv.decodeString(Keys.LIST_SORT_TYPE) ?: "UPDATE_TIME"
+        set(value) {
+            mmkv.encode(Keys.LIST_SORT_TYPE, value)
+        }
+    
+    /**
+     * 列表排序方向
+     * true = 升序, false = 降序
+     * 默认：降序（最新在前）
+     */
+    var listSortAscending: Boolean
+        get() = mmkv.decodeBool(Keys.LIST_SORT_ASCENDING, false)
+        set(value) {
+            mmkv.encode(Keys.LIST_SORT_ASCENDING, value)
+        }
+    
+    /**
+     * 列表查看模式（云端/本地）
+     * 
+     * 默认：CLOUD（云端模式）
+     */
+    var viewMode: String
+        get() = mmkv.decodeString(Keys.VIEW_MODE) ?: "CLOUD"
+        set(value) {
+            mmkv.encode(Keys.VIEW_MODE, value)
+        }
+    
     /**
      * 添加自定义标签
      */
@@ -176,6 +241,97 @@ object AppSettings {
         customTags = customTags.filter { it != tag }
     }
     
+    // ==================== 本地文件夹管理 ====================
+    
+    /**
+     * 本地文件夹引用列表
+     * 存储为 JSON 数组
+     */
+    var localFolderReferences: List<LocalFolderReference>
+        get() {
+            val jsonString = mmkv.decodeString(Keys.LOCAL_FOLDER_REFERENCES) ?: return emptyList()
+            return if (jsonString.isEmpty()) {
+                emptyList()
+            } else {
+                try {
+                    json.decodeFromString(jsonString)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    emptyList()
+                }
+            }
+        }
+        set(value) {
+            val jsonString = json.encodeToString(value)
+            mmkv.encode(Keys.LOCAL_FOLDER_REFERENCES, jsonString)
+        }
+    
+    /**
+     * 添加本地文件夹引用
+     * 
+     * @param uri 文件夹 URI
+     * @param displayName 显示名称
+     * @return 是否添加成功（如果已存在则返回 false）
+     */
+    fun addLocalFolderReference(uri: String, displayName: String): Boolean {
+        val refs = localFolderReferences.toMutableList()
+        
+        // 检查是否已存在
+        if (refs.any { it.uri == uri }) {
+            return false
+        }
+        
+        // 添加新引用
+        refs.add(
+            LocalFolderReference(
+                uri = uri,
+                displayName = displayName,
+                addTime = System.currentTimeMillis(),
+                lastScanTime = 0,
+                seriesCount = 0,
+                permissionStatus = 0
+            )
+        )
+        
+        localFolderReferences = refs
+        return true
+    }
+    
+    /**
+     * 删除本地文件夹引用
+     * 
+     * @param uri 文件夹 URI
+     */
+    fun removeLocalFolderReference(uri: String) {
+        localFolderReferences = localFolderReferences.filter { it.uri != uri }
+    }
+    
+    /**
+     * 更新文件夹引用信息
+     * 
+     * @param uri 文件夹 URI
+     * @param update 更新函数
+     */
+    fun updateLocalFolderReference(uri: String, update: (LocalFolderReference) -> LocalFolderReference) {
+        val refs = localFolderReferences.toMutableList()
+        val index = refs.indexOfFirst { it.uri == uri }
+        
+        if (index != -1) {
+            refs[index] = update(refs[index])
+            localFolderReferences = refs
+        }
+    }
+    
+    /**
+     * 获取单个文件夹引用
+     * 
+     * @param uri 文件夹 URI
+     * @return 文件夹引用，如果不存在则返回 null
+     */
+    fun getLocalFolderReference(uri: String): LocalFolderReference? {
+        return localFolderReferences.find { it.uri == uri }
+    }
+    
     // ==================== MMKV 键名 ====================
     private object Keys {
         const val IMAGE_CACHE_PATH = "image_cache_path"
@@ -187,6 +343,10 @@ object AppSettings {
         const val SWIPE_THRESHOLD = "swipe_threshold"
         const val REPORT_INTERVAL = "report_interval"
         const val CUSTOM_TAGS = "custom_tags"
+        const val LIST_SORT_TYPE = "list_sort_type"
+        const val LIST_SORT_ASCENDING = "list_sort_ascending"
+        const val LOCAL_FOLDER_REFERENCES = "local_folder_references"
+        const val VIEW_MODE = "view_mode"
     }
     
     /**

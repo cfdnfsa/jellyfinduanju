@@ -83,11 +83,7 @@ fun DownloadScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("下载管理") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                title = { Text("下载管理") }
             )
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0)  // 禁用Scaffold的自动系统栏padding，实现边到边效果

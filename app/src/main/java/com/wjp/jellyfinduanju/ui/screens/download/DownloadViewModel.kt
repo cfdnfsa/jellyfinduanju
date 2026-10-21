@@ -1,7 +1,6 @@
 package com.wjp.jellyfinduanju.ui.screens.download
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.wjp.jellyfinduanju.data.local.DownloadDataStore
 import com.wjp.jellyfinduanju.data.local.EpisodeDataStore
@@ -10,12 +9,14 @@ import com.wjp.jellyfinduanju.data.model.DownloadStatus
 import com.wjp.jellyfinduanju.data.model.DownloadTask
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.download.DownloadManager
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * DownloadViewModel - 下载页面的 ViewModel
@@ -26,7 +27,8 @@ import kotlinx.coroutines.launch
  * 3. 展示已完成的下载（按剧集分组）
  * 4. 处理暂停、恢复、重试、取消等操作
  */
-class DownloadViewModel(
+@HiltViewModel
+class DownloadViewModel @Inject constructor(
     private val downloadDataStore: DownloadDataStore,
     private val seriesDataStore: SeriesDataStore,
     private val episodeDataStore: EpisodeDataStore
@@ -230,21 +232,3 @@ data class CompletedSeriesGroup(
         }
     }
 }
-
-/**
- * DownloadViewModel 工厂类
- */
-class DownloadViewModelFactory(
-    private val downloadDataStore: DownloadDataStore,
-    private val seriesDataStore: SeriesDataStore,
-    private val episodeDataStore: EpisodeDataStore
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(DownloadViewModel::class.java)) {
-            return DownloadViewModel(downloadDataStore, seriesDataStore, episodeDataStore) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
-}
-

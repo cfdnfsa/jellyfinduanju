@@ -1,4 +1,4 @@
-package com.wjp.jellyfinduanju.ui.screens.settings
+package com.wjp.jellyfinduanju.ui.screens.settings.tag
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Label
@@ -55,7 +56,6 @@ import com.wjp.jellyfinduanju.data.settings.AppSettings
 @Composable
 fun TagManageScreen(
     onBack: () -> Unit,
-    onDeleteTag: (String) -> Unit = {}  // 删除标签时的回调，用于同步移除剧集中的标签
 ) {
     // 标签列表状态
     var tags by remember { mutableStateOf(AppSettings.customTags) }
@@ -103,7 +103,7 @@ fun TagManageScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.Label,
+                    imageVector = Icons.AutoMirrored.Filled.Label,
                     contentDescription = null,
                     modifier = Modifier.size(64.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
@@ -194,8 +194,6 @@ fun TagManageScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        // 先从所有剧集中移除该标签
-                        onDeleteTag(tag)
                         // 再从标签列表中移除
                         AppSettings.removeCustomTag(tag)
                         tags = AppSettings.customTags
@@ -239,7 +237,7 @@ private fun TagItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Default.Label,
+                    imageVector = Icons.AutoMirrored.Filled.Label,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary
                 )

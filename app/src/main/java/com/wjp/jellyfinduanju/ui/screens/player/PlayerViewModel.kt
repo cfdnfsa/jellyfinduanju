@@ -1,14 +1,17 @@
 package com.wjp.jellyfinduanju.ui.screens.player
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.wjp.jellyfinduanju.data.local.SeriesDataStore
 import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
 import com.wjp.jellyfinduanju.data.model.SeasonLocalData
 import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.repository.DetailRepository
+import com.wjp.jellyfinduanju.data.repository.SeriesRepository
 import com.wjp.jellyfinduanju.data.settings.AppSettings
 import com.wjp.jellyfinduanju.download.DownloadManager
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -20,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
 /**
  * ============================================================================
@@ -45,14 +49,25 @@ import kotlinx.coroutines.withContext
  * 这两个标记用于防止 ExoPlayer 的状态回调覆盖用户意图
  * 
  * @param detailRepository 详情仓库，用于获取剧集数据和上报进度
- * @param series 当前剧集的基本信息
- * @param initialEpisodeId 初始播放的集 ID（从详情页传入）
+ * @param seriesRepository 剧集仓库，用于本地导入剧集的进度文件管理
+ * @param seriesDataStore 剧集数据存储（用于获取剧集信息）
+ * @param savedStateHandle SavedStateHandle（用于获取导航参数）
  */
-class PlayerViewModel(
+@HiltViewModel
+class PlayerViewModel @Inject constructor(
     private val detailRepository: DetailRepository,
-    private val series: SeriesLocalData,
-    private val initialEpisodeId: String
+    private val seriesRepository: SeriesRepository,
+    private val seriesDataStore: SeriesDataStore,
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+    
+    // 从导航参数获取 seriesId 和 episodeId
+    private val seriesId: String = savedStateHandle.get<String>("seriesId") ?: ""
+    private val initialEpisodeId: String = savedStateHandle.get<String>("episodeId") ?: ""
+    
+    // 从 SeriesDataStore 获取剧集信息
+    private val series: SeriesLocalData = seriesDataStore.getSeries(seriesId) 
+        ?: throw IllegalArgumentException("Series not found: $seriesId")
     
     // ============================================================================
     // UI 状态
@@ -399,26 +414,67 @@ class PlayerViewModel(
                 
                 // 毫秒转 ticks：1毫秒 = 10,000 ticks
                 val positionTicks = state.currentPosition * 10_000
+                val durationTicks = if (state.duration > 0) state.duration * 10_000 else 0
                 
-                // 1. 先保存到本地（保证本地进度一定被保存）
-                try {
-                    detailRepository.savePlaybackPositionLocal(
-                        seasonId = episode.seasonId,
-                        episodeId = episode.id,
-                        positionTicks = positionTicks
-                    )
-                } catch (e: Exception) { 
-                    // 本地保存失败（静默处理）
-                }
-                
-                // 2. 然后尝试上报到服务器（失败也不影响本地保存）
-                try {
-                    detailRepository.updatePlaybackPosition(
-                        episodeId = episode.id,
-                        positionTicks = positionTicks
-                    )
-                } catch (e: Exception) { 
-                    // 服务器上报失败（静默处理）
+                // 2. 如果是本地导入的剧集，写入进度文件；否则上报到服务器
+                if (series.isLocalImport) {
+                    // 本地导入：保存到本地数据库并写入进度文件
+                    try {
+                        series.localFolderPath?.let { folderPath ->
+                            // 获取当前季的所有剧集
+                            val result = detailRepository.getEpisodes(series.id, episode.seasonId)
+                            result.onSuccess { episodes ->
+                                // 找到当前剧集并更新进度和总时长
+                                val updatedEpisodes = episodes.map { ep ->
+                                    if (ep.id == episode.id) {
+                                        ep.copy(
+                                            playbackPositionTicks = positionTicks,
+                                            runTimeTicks = if (durationTicks > 0) durationTicks else ep.runTimeTicks,  // 更新总时长
+                                            lastPlayedDate = System.currentTimeMillis()
+                                        )
+                                    } else {
+                                        ep
+                                    }
+                                }
+                                
+                                // 找到更新后的当前剧集
+                                val updatedEpisode = updatedEpisodes.find { it.id == episode.id }
+                                if (updatedEpisode != null) {
+                                    // 保存到本地数据库
+                                    detailRepository.updateEpisodeLocalOnly(updatedEpisode)
+                                    
+                                    // 写入进度文件
+                                    seriesRepository.updateLocalSeriesProgress(
+                                        series.id,
+                                        updatedEpisode,
+                                        updatedEpisodes
+                                    )
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // 进度文件写入失败（静默处理）
+                    }
+                } else {
+                    // 云端剧集：先保存到本地 EpisodeDataStore
+                    try {
+                        detailRepository.savePlaybackPositionLocal(
+                            seasonId = episode.seasonId,
+                            episodeId = episode.id,
+                            positionTicks = positionTicks
+                        )
+                    } catch (e: Exception) { 
+                        // 本地保存失败（静默处理）
+                    }
+                    // 云端剧集：上报到服务器
+                    try {
+                        detailRepository.updatePlaybackPosition(
+                            episodeId = episode.id,
+                            positionTicks = positionTicks
+                        )
+                    } catch (e: Exception) { 
+                        // 服务器上报失败（静默处理）
+                    }
                 }
             } catch (e: Exception) { 
                 // 异常（静默处理）
@@ -646,7 +702,26 @@ class PlayerViewModel(
                 _uiState.update { it.copy(seekToPosition = savedPosition) }
             }
             
-            // 优先使用本地缓存
+            // 1. 优先使用本地导入的视频（SAF URI）
+            if (!episode.localVideoPath.isNullOrEmpty()) {
+                _uiState.update { 
+                    it.copy(
+                        currentVideoUri = episode.localVideoPath,
+                        isVideoLoading = false,
+                        isLocalVideo = true,
+                        isPlaying = true
+                        // 注意：不在这里设置 isChangingEpisode = false
+                        // 等待 ExoPlayer 真正开始播放后再清除（在 onPlaybackStateChanged 中处理）
+                    )
+                }
+                
+                try {
+                    detailRepository.reportPlaybackStart(episode.id, episode.playbackPositionTicks)
+                } catch (_: Exception) { }
+                return@launch
+            }
+            
+            // 2. 其次使用下载缓存
             val cachedFile = DownloadManager.getCachedVideoFile(episode.seriesId, episode.id)
             if (cachedFile != null && cachedFile.exists()) {
                 _uiState.update { 
@@ -666,7 +741,7 @@ class PlayerViewModel(
                 return@launch
             }
             
-            // 无缓存，使用网络流
+            // 3. 最后使用网络流
             val videoUrl = detailRepository.getVideoStreamUrl(episode.id)
             if (videoUrl != null) {
                 _uiState.update { 
@@ -898,31 +973,3 @@ data class PlayerUiState(
     }
 }
 
-/**
- * ============================================================================
- * PlayerViewModelFactory - ViewModel 工厂类
- * ============================================================================
- * 
- * 由于 PlayerViewModel 需要构造参数，不能直接使用默认的 ViewModelProvider
- * 需要自定义工厂类来创建 ViewModel 实例
- * 
- * 使用方式：
- * ```
- * val viewModel: PlayerViewModel = viewModel(
- *     factory = PlayerViewModelFactory(repository, series, episodeId)
- * )
- * ```
- */
-class PlayerViewModelFactory(
-    private val detailRepository: DetailRepository,
-    private val series: SeriesLocalData,
-    private val initialEpisodeId: String
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(PlayerViewModel::class.java)) {
-            return PlayerViewModel(detailRepository, series, initialEpisodeId) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
-}

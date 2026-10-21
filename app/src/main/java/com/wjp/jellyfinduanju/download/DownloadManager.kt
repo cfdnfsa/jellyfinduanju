@@ -488,8 +488,6 @@ object DownloadManager {
                 }
             }
             
-            android.util.Log.d("DownloadManager", "下载完成: ${task.seriesName} S${task.seasonNumber}E${task.episodeNumber}")
-            
         } catch (e: Exception) {
             e.printStackTrace()
             downloadDataStore.updateStatus(task.id, DownloadStatus.FAILED, e.message ?: "下载失败")

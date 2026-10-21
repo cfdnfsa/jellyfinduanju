@@ -33,8 +33,7 @@ import kotlinx.serialization.json.Json
  */
 class SeriesDataStore {
     
-    // 使用独立的 MMKV 实例存储剧集数据
-    private val mmkv = MMKV.mmkvWithID("series_data")
+    private val mmkv by lazy { MMKV.mmkvWithID("series_data") }
     
     // JSON 序列化器
     private val json = Json { 
@@ -56,14 +55,14 @@ class SeriesDataStore {
      * 
      * UI 可以订阅此 Flow 来响应数据变化
      */
-    private val _seriesListFlow = MutableStateFlow<List<SeriesLocalData>>(loadAllSeries())
-    val seriesListFlow: Flow<List<SeriesLocalData>> = _seriesListFlow
+    private val _seriesListFlow by lazy { MutableStateFlow<List<SeriesLocalData>>(loadAllSeries()) }
+    val seriesListFlow: Flow<List<SeriesLocalData>> get() = _seriesListFlow
     
     /**
      * 最后刷新时间的 StateFlow
      */
-    private val _lastRefreshTimeFlow = MutableStateFlow(loadLastRefreshTime())
-    val lastRefreshTimeFlow: Flow<Long> = _lastRefreshTimeFlow
+    private val _lastRefreshTimeFlow by lazy { MutableStateFlow(loadLastRefreshTime()) }
+    val lastRefreshTimeFlow: Flow<Long> get() = _lastRefreshTimeFlow
     
     // ==================== 保存方法 ====================
     

@@ -1,8 +1,9 @@
 package com.wjp.jellyfinduanju.ui.screens.detail
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.wjp.jellyfinduanju.data.local.SeriesDataStore
 import com.wjp.jellyfinduanju.data.model.DownloadStatus
 import com.wjp.jellyfinduanju.data.model.EpisodeLocalData
 import com.wjp.jellyfinduanju.data.model.SeasonLocalData
@@ -10,6 +11,7 @@ import com.wjp.jellyfinduanju.data.model.SeriesLocalData
 import com.wjp.jellyfinduanju.data.repository.DetailRepository
 import com.wjp.jellyfinduanju.data.repository.SeriesRepository
 import com.wjp.jellyfinduanju.download.DownloadManager
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
 /**
  * DetailViewModel - 剧集详情页的 ViewModel
@@ -37,13 +40,23 @@ import kotlinx.coroutines.withContext
  * 
  * @property detailRepository 详情数据仓库
  * @property seriesRepository 剧集仓库（用于删除后清理）
- * @property series 当前剧集信息
+ * @property seriesDataStore 剧集数据存储（用于获取剧集信息）
+ * @property savedStateHandle SavedStateHandle（用于获取导航参数）
  */
-class DetailViewModel(
+@HiltViewModel
+class DetailViewModel @Inject constructor(
     private val detailRepository: DetailRepository,
     private val seriesRepository: SeriesRepository,
-    private val series: SeriesLocalData
+    private val seriesDataStore: SeriesDataStore,
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+    
+    // 从导航参数获取 seriesId
+    private val seriesId: String = savedStateHandle.get<String>("seriesId") ?: ""
+    
+    // 从 SeriesDataStore 获取剧集信息
+    private val series: SeriesLocalData = seriesDataStore.getSeries(seriesId) 
+        ?: throw IllegalArgumentException("Series not found: $seriesId")
     
     // ==================== UI 状态 ====================
     
@@ -203,6 +216,14 @@ class DetailViewModel(
                             updatedEpisodes[seasonId] = episodes
                             state.copy(episodesBySeasonId = updatedEpisodes)
                         }
+                        
+                        // 检查是否所有季都加载完成，如果是则初始化默认展开的分组
+                        val allSeasonsLoaded = _uiState.value.seasons.all { season ->
+                            _uiState.value.episodesBySeasonId.containsKey(season.id)
+                        }
+                        if (allSeasonsLoaded && _uiState.value.expandedGroupKeys.isEmpty()) {
+                            initializeDefaultExpandedGroups()
+                        }
                     }
                 },
                 onFailure = { exception ->
@@ -220,14 +241,22 @@ class DetailViewModel(
      * 
      * 从服务器获取最新数据（播放进度、是否看完等），保留本地缓存状态
      * 用户点击同步按钮时调用
+     * 
+     * 本地导入的剧集不支持此功能
      */
     fun syncFromServer() {
+        // 本地导入的剧集不支持从服务器同步
+        if (series.isLocalImport) {
+            _uiState.update { 
+                it.copy(error = "本地剧集无需同步")
+            }
+            return
+        }
+        
         if (_uiState.value.isRefreshing) return
         
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true, error = null) }
-            
-            android.util.Log.d("DetailViewModel", "syncFromServer: 开始同步 seriesId=${series.id}")
             
             // 强制刷新季列表
             val seasonsResult = detailRepository.refreshSeasons(series.id)
@@ -243,10 +272,6 @@ class DetailViewModel(
                         val episodesResult = detailRepository.refreshEpisodes(series.id, season.id)
                         episodesResult.fold(
                             onSuccess = { episodes ->
-                                android.util.Log.d("DetailViewModel", "syncFromServer: 季${season.seasonNumber} 获取到 ${episodes.size} 集")
-                                episodes.take(3).forEach { ep ->
-                                    android.util.Log.d("DetailViewModel", "  第${ep.episodeNumber}集: played=${ep.played}, positionTicks=${ep.playbackPositionTicks}, runTimeTicks=${ep.runTimeTicks}, percent=${ep.getProgressPercent()}%")
-                                }
                                 _uiState.update { state ->
                                     val updatedEpisodes = state.episodesBySeasonId.toMutableMap()
                                     updatedEpisodes[season.id] = episodes
@@ -279,8 +304,22 @@ class DetailViewModel(
      * 
      * 将本地保存的播放进度上报到服务器
      * 用户点击上报按钮时调用
+     * 
+     * 本地导入的剧集不支持此功能
      */
     fun uploadProgressToServer() {
+        // 本地导入的剧集不支持上报进度到服务器
+        if (series.isLocalImport) {
+            viewModelScope.launch {
+                _uiState.update { 
+                    it.copy(uploadResult = "本地剧集无需上报")
+                }
+                kotlinx.coroutines.delay(3000)
+                _uiState.update { it.copy(uploadResult = null) }
+            }
+            return
+        }
+        
         if (_uiState.value.isUploading) return
         
         viewModelScope.launch {
@@ -322,6 +361,9 @@ class DetailViewModel(
     
     /**
      * 确认标记剧集为已看完
+     * 
+     * 本地导入的剧集：只更新本地数据和进度文件，不请求接口
+     * 云端剧集：同时更新服务器和本地
      */
     fun confirmMarkAsPlayed() {
         val episode = _uiState.value.episodeToMark ?: return
@@ -329,16 +371,34 @@ class DetailViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isMarkingPlayed = true) }
             
-            val result = if (episode.played) {
-                // 如果已看完，则取消标记
-                detailRepository.unmarkAsPlayed(episode.id, episode.seasonId)
-            } else {
-                // 如果未看完，则标记为已看完
-                detailRepository.markAsPlayed(episode.id, episode.seasonId)
-            }
-            
-            result.fold(
-                onSuccess = {
+            if (series.isLocalImport) {
+                // 本地导入的剧集：只更新本地数据
+                try {
+                    val newPlayedStatus = !episode.played
+                    val updatedEpisode = episode.copy(
+                        played = newPlayedStatus,
+                        playbackPositionTicks = if (newPlayedStatus) 0 else episode.playbackPositionTicks,
+                        lastPlayedDate = System.currentTimeMillis()
+                    )
+                    
+                    // 更新 EpisodeDataStore
+                    detailRepository.updateEpisodeLocalOnly(updatedEpisode)
+                    
+                    // 写入进度文件（从数据库读取最新数据）
+                    series.localFolderPath?.let { folderPath ->
+                        val result = detailRepository.getEpisodes(series.id, episode.seasonId)
+                        result.onSuccess { latestEpisodes ->
+                            val latestUpdatedEpisode = latestEpisodes.find { it.id == episode.id }
+                            if (latestUpdatedEpisode != null) {
+                                seriesRepository.updateLocalSeriesProgress(
+                                    series.id,
+                                    latestUpdatedEpisode,
+                                    latestEpisodes
+                                )
+                            }
+                        }
+                    }
+                    
                     // 更新本地状态
                     _uiState.update { state ->
                         val updatedEpisodes = state.episodesBySeasonId.toMutableMap()
@@ -347,7 +407,7 @@ class DetailViewModel(
                         seasonEpisodes?.let { list ->
                             val index = list.indexOfFirst { it.id == episode.id }
                             if (index != -1) {
-                                list[index] = episode.copy(played = !episode.played)
+                                list[index] = updatedEpisode
                                 updatedEpisodes[episode.seasonId] = list
                             }
                         }
@@ -358,16 +418,56 @@ class DetailViewModel(
                             episodeToMark = null
                         )
                     }
-                },
-                onFailure = { exception ->
+                } catch (e: Exception) {
                     _uiState.update { 
                         it.copy(
                             isMarkingPlayed = false,
-                            error = exception.message ?: "标记失败"
+                            error = "标记失败: ${e.message}"
                         )
                     }
                 }
-            )
+            } else {
+                // 云端剧集：调用 API
+                val result = if (episode.played) {
+                    // 如果已看完，则取消标记
+                    detailRepository.unmarkAsPlayed(episode.id, episode.seasonId)
+                } else {
+                    // 如果未看完，则标记为已看完
+                    detailRepository.markAsPlayed(episode.id, episode.seasonId)
+                }
+                
+                result.fold(
+                    onSuccess = {
+                        // 更新本地状态
+                        _uiState.update { state ->
+                            val updatedEpisodes = state.episodesBySeasonId.toMutableMap()
+                            val seasonEpisodes = updatedEpisodes[episode.seasonId]?.toMutableList()
+                            
+                            seasonEpisodes?.let { list ->
+                                val index = list.indexOfFirst { it.id == episode.id }
+                                if (index != -1) {
+                                    list[index] = episode.copy(played = !episode.played)
+                                    updatedEpisodes[episode.seasonId] = list
+                                }
+                            }
+                            
+                            state.copy(
+                                episodesBySeasonId = updatedEpisodes,
+                                isMarkingPlayed = false,
+                                episodeToMark = null
+                            )
+                        }
+                    },
+                    onFailure = { exception ->
+                        _uiState.update { 
+                            it.copy(
+                                isMarkingPlayed = false,
+                                error = exception.message ?: "标记失败"
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
     
@@ -375,8 +475,16 @@ class DetailViewModel(
     
     /**
      * 进入缓存选择模式
+     * 
+     * 本地导入的剧集不支持此功能
      */
     fun enterCacheSelectMode() {
+        // 本地导入的剧集不需要缓存
+        if (series.isLocalImport) {
+            _uiState.update { it.copy(error = "本地剧集无需缓存") }
+            return
+        }
+        
         _uiState.update { 
             it.copy(
                 isCacheSelectMode = true,
@@ -388,8 +496,16 @@ class DetailViewModel(
     
     /**
      * 进入删除缓存选择模式
+     * 
+     * 本地导入的剧集不支持此功能
      */
     fun enterDeleteSelectMode() {
+        // 本地导入的剧集不由应用管理文件
+        if (series.isLocalImport) {
+            _uiState.update { it.copy(error = "本地剧集文件由用户管理") }
+            return
+        }
+        
         _uiState.update { 
             it.copy(
                 isCacheSelectMode = false,
@@ -458,6 +574,122 @@ class DetailViewModel(
             }
             
             state.copy(selectedEpisodeIds = newSet)
+        }
+    }
+    
+    // ==================== 分组展开/折叠 ====================
+    
+    /**
+     * 切换分组的展开/折叠状态
+     * 
+     * @param groupKey 分组 key（格式：seasonId-start-end）
+     */
+    fun toggleGroupExpansion(groupKey: String) {
+        _uiState.update { state ->
+            val newSet = state.expandedGroupKeys.toMutableSet()
+            if (newSet.contains(groupKey)) {
+                newSet.remove(groupKey)
+            } else {
+                newSet.add(groupKey)
+            }
+            state.copy(expandedGroupKeys = newSet)
+        }
+    }
+    
+    /**
+     * 批量选择/取消选择一个分组的所有剧集
+     * 
+     * @param seasonId 季 ID
+     * @param startEpisode 起始集数
+     * @param endEpisode 结束集数
+     */
+    fun toggleGroupSelection(seasonId: String, startEpisode: Int, endEpisode: Int) {
+        _uiState.update { state ->
+            // 获取该分组的所有剧集
+            val episodes = state.episodesBySeasonId[seasonId]?.filter { episode ->
+                episode.episodeNumber in startEpisode..endEpisode
+            } ?: return@update state
+            
+            // 过滤掉不可选的剧集（删除模式下只能选已缓存的）
+            val selectableEpisodes = if (state.isDeleteSelectMode) {
+                episodes.filter { it.isCached }
+            } else {
+                episodes
+            }
+            
+            val episodeIds = selectableEpisodes.map { it.id }.toSet()
+            
+            // 判断是否全选了
+            val allSelected = episodeIds.all { state.selectedEpisodeIds.contains(it) }
+            
+            val newSet = state.selectedEpisodeIds.toMutableSet()
+            if (allSelected) {
+                // 取消选择
+                newSet.removeAll(episodeIds)
+            } else {
+                // 选择
+                newSet.addAll(episodeIds)
+            }
+            
+            state.copy(selectedEpisodeIds = newSet)
+        }
+    }
+    
+    /**
+     * 初始化默认展开的分组
+     * 
+     * 策略：展开所有包含"正在看"剧集的分组（有进度但未看完）
+     */
+    private fun initializeDefaultExpandedGroups() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val seasons = _uiState.value.seasons
+            val episodesBySeasonId = _uiState.value.episodesBySeasonId
+            
+            if (seasons.isEmpty() || episodesBySeasonId.isEmpty()) return@launch
+            
+            val defaultExpandedKeys = mutableSetOf<String>()
+            
+            // 遍历每个季
+            for (season in seasons) {
+                val episodes = episodesBySeasonId[season.id] ?: continue
+                if (episodes.isEmpty()) continue
+                
+                // 按集数排序
+                val sortedEpisodes = episodes.sortedBy { it.episodeNumber }
+                
+                val groupSize = 10
+                var hasAnyWatching = false
+                
+                // 遍历所有分组
+                for (startEpisode in 1..sortedEpisodes.size step groupSize) {
+                    val endEpisode = minOf(startEpisode + groupSize - 1, sortedEpisodes.size)
+                    val groupEpisodes = sortedEpisodes.filter { 
+                        it.episodeNumber in startEpisode..endEpisode 
+                    }
+                    
+                    // 检查这个分组是否有"正在看"的剧集（有进度但未看完）
+                    val hasWatching = groupEpisodes.any { 
+                        !it.played && it.playbackPositionTicks > 0
+                    }
+                    
+                    if (hasWatching) {
+                        val groupKey = "${season.id}-$startEpisode-$endEpisode"
+                        defaultExpandedKeys.add(groupKey)
+                        hasAnyWatching = true
+                    }
+                }
+                
+                // 如果这个季没有"正在看"的，就展开第一个分组
+                if (!hasAnyWatching) {
+                    val groupKey = "${season.id}-1-${minOf(groupSize, sortedEpisodes.size)}"
+                    defaultExpandedKeys.add(groupKey)
+                }
+            }
+            
+            // 更新状态
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(expandedGroupKeys = defaultExpandedKeys) }
+            }
         }
     }
     
@@ -600,6 +832,7 @@ class DetailViewModel(
  * @property episodeToMark 待标记的剧集（用于显示对话框）
  * @property isMarkingPlayed 是否正在标记已看完
  * @property shouldNavigateBack 是否需要返回上一页（删除已从服务器删除的剧集后触发）
+ * @property expandedGroupKeys 已展开的分组 key 集合（格式：seasonId-start-end，如 "s1-1-10"）
  */
 data class DetailUiState(
     val series: SeriesLocalData,
@@ -619,7 +852,9 @@ data class DetailUiState(
     val pendingEpisodeIds: Set<String> = emptySet(),      // 排队等待中
     // 上报进度状态
     val isUploading: Boolean = false,
-    val uploadResult: String? = null
+    val uploadResult: String? = null,
+    // 分组展开状态
+    val expandedGroupKeys: Set<String> = emptySet()       // 已展开的分组
 ) {
     /**
      * 是否处于任意选择模式
@@ -639,23 +874,3 @@ data class DetailUiState(
     val cachedEpisodeCount: Int
         get() = episodesBySeasonId.values.flatten().count { it.isCached }
 }
-
-/**
- * DetailViewModelFactory - DetailViewModel 的工厂类
- * 
- * 用于创建带参数的 ViewModel
- */
-class DetailViewModelFactory(
-    private val detailRepository: DetailRepository,
-    private val seriesRepository: SeriesRepository,
-    private val series: SeriesLocalData
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(DetailViewModel::class.java)) {
-            return DetailViewModel(detailRepository, seriesRepository, series) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
-}
-
